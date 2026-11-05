@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: rhr
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      POSTGRES_DB: rhr
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U rhr"], interval: 5s, retries: 10 }
+  app:
+    build: .
+    depends_on: { db: { condition: service_healthy } }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://rhr:${DB_PASSWORD}@db:5432/rhr
+    ports: ["3001:3001"]
+    volumes: [uploads:/data/uploads, backups:/data/backups]
+volumes: { pgdata: {}, uploads: {}, backups: {} }

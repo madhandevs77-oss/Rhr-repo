@@ -1,0 +1,37 @@
+# Render Blueprint — free web service. Secrets (sync:false) are entered in the Render dashboard, never committed.
+services:
+  - type: web
+    name: rhr-booking
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "true"
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: DB_POOL_MAX
+        value: "5"
+      - key: STORAGE_DRIVER
+        value: supabase
+      - key: SUPABASE_BUCKET
+        value: hall-images
+      - key: DATABASE_URL
+        sync: false
+      - key: MIGRATE_DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false

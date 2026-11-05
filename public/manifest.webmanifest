@@ -1,0 +1,9 @@
+{
+  "name": "RHR Veg Restaurant — Booking & Catering",
+  "short_name": "RHR Booking",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#1a1a2e",
+  "icons": [{ "src": "images/logo.png", "sizes": "256x256", "type": "image/png" }]
+}
