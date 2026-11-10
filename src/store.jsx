@@ -64,7 +64,7 @@ export function useLoad(fn, deps = []) {
       (error) => live && setState({ data: null, error, loading: false }),
     )
     return () => { live = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [...deps, tick])
   return { ...state, reload: useCallback(() => setTick((t) => t + 1), []) }
 }

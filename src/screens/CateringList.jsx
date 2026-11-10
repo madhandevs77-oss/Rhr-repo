@@ -25,7 +25,7 @@ export default function CateringList({ nav }) {
         <select value={opt} onChange={(e) => setOpt(e.target.value)} aria-label="Service option"><option value="">All services</option>{options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select>
         <label className="inline-check"><input type="checkbox" checked={upcoming} onChange={(e) => setUpcoming(e.target.checked)} /> Upcoming only</label>
       </div>
-      <Async res={res} empty={(d) => (d.orders.length ? null : <Empty>{term || status || opt ? 'No orders match these filters.' : 'No bulk catering orders yet. Use the + button to create one.'}</Empty>)}>
+      <Async res={res} empty={(d) => (d.orders.length ? null : <Empty>{term || status || opt ? 'No orders match these filters.' : 'No orders yet. Tick dishes in the Menu tab, or use the New Order button.'}</Empty>)}>
         {({ orders }) => (
           <div className="bookings-list">
             {orders.map((o) => (

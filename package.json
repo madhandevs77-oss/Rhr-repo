@@ -17,9 +17,14 @@
     "restore": "node server/scripts/restore.js",
     "test": "node --test --test-concurrency=1 \"tests/*.test.js\"",
     "start": "NODE_ENV=production node server/index.js",
-    "upload-local-images": "node server/scripts/upload-local-images.js"
+    "upload-local-images": "node server/scripts/upload-local-images.js",
+    "lint": "eslint .",
+    "test:coverage": "node --test --test-concurrency=1 --experimental-test-coverage --test-coverage-exclude=\"tests/**\" --test-coverage-exclude=\"scripts/**\" \"tests/*.test.js\"",
+    "test:routes": "node scripts/run-route-coverage.mjs",
+    "test:frontend": "vitest run"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1164.0",
     "express": "^4.22.3",
     "express-async-errors": "^3.1.1",
     "helmet": "^8.3.0",
@@ -30,13 +35,23 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sharp": "^0.35.5",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
     "@vitejs/plugin-react": "^6.1.2",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.14.0",
+    "jsdom": "^29.1.1",
     "mailparser": "^3.12.4",
     "smtp-server": "^3.21.1",
-    "vite": "^8.3.4"
+    "vite": "^8.3.4",
+    "vitest": "^5.1.0"
   },
   "engines": {
     "node": ">=22"

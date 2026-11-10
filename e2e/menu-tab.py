@@ -8,7 +8,7 @@ with sync_playwright() as p:
     b=p.chromium.launch(); pg=b.new_context(viewport={'width':W,'height':900}).new_page()
     pg.on('pageerror',lambda e:errs.append(str(e))); pg.on('response',lambda r: errs.append((r.status,r.url)) if r.status>=400 and 'auth' not in r.url else None)
     pg.goto('http://localhost:3001/'); pg.wait_for_selector('input'); i=pg.locator('input'); i.nth(0).fill('admin'); i.nth(1).fill('Admin12345x'); pg.click('button:has-text("Sign in")'); pg.wait_for_selector('.bottom-nav')
-    tabs=pg.locator('.bottom-nav button').all_inner_texts(); print(tabs); assert tabs==['Home','Bookings','Calendar','Catering','Menu','More']
+    tabs=pg.locator('.bottom-nav button').all_inner_texts(); print(tabs); assert tabs==['Home','Bookings','Calendar','Menu','More']
     pg.locator('.bottom-nav button',has_text='Menu').click(); pg.wait_for_selector('.food-category')
     pg.get_by_placeholder('Search dishes…').fill('Idly'); pg.wait_for_timeout(300)
     pg.get_by_label('Select Idly').first.check()
@@ -28,7 +28,7 @@ with sync_playwright() as p:
     pg.wait_for_selector('.booking-detail__name'); pg.wait_for_timeout(300)
     print('created for',pg.locator('.booking-detail__name').first.inner_text(), '|', pg.locator('.booking-detail__ref').first.inner_text())
     # picked list must be empty for the next order
-    pg.locator('.bottom-nav button',has_text='Catering').click(); pg.locator('.fab').click(); pg.wait_for_selector('.cform'); print('next new order starts with items:',pg.locator('.cpick__item.is-on').count()); assert pg.locator('.cpick__item.is-on').count()==0
+    pg.locator('.bottom-nav button',has_text='Menu').click(); pg.get_by_test_id('orders-tab').click(); pg.locator('.fab').click(); pg.wait_for_selector('.cform'); print('next new order starts with items:',pg.locator('.cpick__item.is-on').count()); assert pg.locator('.cpick__item.is-on').count()==0
     pg.locator('.header__back').click()
     # edit the created order: items restored
     pg.get_by_text('Menu Tab '+tag).first.click(); pg.wait_for_selector('.booking-detail__name')

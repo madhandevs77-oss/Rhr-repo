@@ -104,3 +104,16 @@ Bulk Catering module (3 renamable options, lifecycle, vendors, quotations, versi
 - `server/app.js`: `/healthz`, CSP img-src for Supabase origin. `server/scripts/upload-local-images.js`, `backup.js` (direct URL), `render.yaml`, `DEPLOYMENT.md`, `.env.example`, `package.json` (engines, script).
 - Tests: `tests/storage-supabase.test.js` (6, against an in-process HTTP server that imitates Supabase's routes). Full suite 151/151, build OK, real production start verified against a fresh local database.
 - NOT verified: real Neon, Supabase or Render accounts, real SMTP/Twilio, Render's blocked SMTP ports.
+
+## Round 7 — One Menu tab for orders; Outsource = delivery or takeaway
+- Footer: the separate Catering tab is gone. The Menu tab now has **Menu | Orders**; "Use in order →" opens the new order page, and the Orders view lists/opens existing orders (nothing removed, no data change).
+- Outsource sections: new "Delivery or takeaway" card (default Takeaway). Delivery requires an address. Maintenance charge field is hidden for outsource. Saved on the booking (migration 012: `fulfilment`, `delivery_address`, CHECK delivery ⇒ address), shown on the booking detail and on the Calendar day list. Normal halls never store it. Server rejects delivery without an address (`DELIVERY_ADDRESS_REQUIRED`); changes are audited.
+- Tests: `tests/outsource-fulfilment.test.js` (4); `e2e/outsource-orders.py` (tabs, Orders view, outsource delivery booking, address validation, detail, calendar). Full suite 155/155, build OK.
+
+## Round 8 — QA pass (see QA_REPORT.md, TESTING.md)
+zod 4 + `npm audit fix` (0 vulnerabilities), `.gitignore`, ESLint (`npm run lint`), coverage/route-coverage scripts, 186 backend tests (new: security, api-gaps) and 9 browser scripts, all passing in the final run.
+
+
+## Round 9 – AWS readiness
+S3 storage driver; RDS CA/TLS config; production config validation; Vitest frontend tests; `fmt` NaN fix; zod/vitest upgrades; CI frontend + Docker build; `.dockerignore`; `AWS_DEPLOYMENT.md`.
+- Calendar now includes catering orders (day dot, day list with time/plates/delivery address, opens the order); new test file tests/calendar-catering.test.js; catering form: message when no service type is switched on, price-per-plate initial value fixed.

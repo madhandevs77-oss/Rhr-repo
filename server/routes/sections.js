@@ -5,10 +5,9 @@ import { Router } from 'express'
 import PDFDocument from 'pdfkit'
 import { query, tx } from '../db/pool.js'
 import { can, requirePerm } from '../lib/auth.js'
-import { badRequest, conflict, notFound } from '../lib/errors.js'
+import { conflict, notFound } from '../lib/errors.js'
 import { isoDate, parse, uuid, z } from '../lib/validate.js'
 import { bookingTotals, settlement } from '../services/pricing.js'
-import { loadPayments } from '../services/payments.js'
 import { audit, todayIST } from '../services/support.js'
 
 const ctxOf = (req) => ({ user: req.user, ip: req.ip })
@@ -53,7 +52,14 @@ calendarRouter.get('/', requirePerm('bookings.view'), async (req, res) => {
      WHERE b.status <> 'cancelled' AND b.event_date >= $1::date AND b.event_date < ($1::date + interval '1 month')::date AND ($2::uuid IS NULL OR b.hall_id = $2)
        AND ${inGroup(3)}
      GROUP BY b.event_date ORDER BY 1`, [first, q.hallId || null, q.group || null])
-  res.json({ month: q.month, days: Object.fromEntries(r.rows.map((x) => [x.d, x.n])) })
+  const days = Object.fromEntries(r.rows.map((x) => [x.d, x.n]))
+  // catering orders belong to no hall: counted when no single hall is picked and the filter is not "Halls only"
+  if (!q.hallId && q.group !== 'halls' && can(req.user, 'catering.view')) {
+    const co = await query(
+      `SELECT event_date AS d, count(*)::int AS n FROM catering_orders WHERE status <> 'cancelled' AND event_date >= $1::date AND event_date < ($1::date + interval '1 month')::date GROUP BY event_date`, [first])
+    for (const x of co.rows) days[x.d] = (days[x.d] || 0) + x.n
+  }
+  res.json({ month: q.month, days })
 })
 calendarRouter.get('/day', requirePerm('bookings.view'), async (req, res) => {
   const q = parse(z.object({ date: isoDate, hallId: uuid.optional(), group: z.enum(['halls', 'outsource']).optional() }), req.query)
@@ -68,7 +74,7 @@ calendarRouter.get('/day', requirePerm('bookings.view'), async (req, res) => {
   const view = (b) => {
     const base = {
       id: b.id, reference: b.reference, status: b.status, customer: b.c_name, phone: b.c_phone, startTime: hhmm(b.start_time), endTime: hhmm(b.end_time),
-      meals: b.meals, notes: b.notes,
+      meals: b.meals, notes: b.notes, fulfilment: b.fulfilment || null, deliveryAddress: b.delivery_address || '',
     }
     if (!money) return base
     const t = bookingTotals(b, charges.filter((c) => c.booking_id === b.id), b.hall_name)
@@ -78,7 +84,21 @@ calendarRouter.get('/day', requirePerm('bookings.view'), async (req, res) => {
   const sections = (await query(`SELECT id, name, kind FROM halls h WHERE (h.active OR EXISTS (SELECT 1 FROM bookings x WHERE x.hall_id = h.id AND x.event_date = $1::date)) AND ${inGroup(2)} ORDER BY COALESCE(kind = 'outsource', false), section_order NULLS LAST, lower(name)`, [q.date, q.group || null])).rows
     .filter((h) => !q.hallId || h.id === q.hallId)
     .map((h) => ({ id: h.id, name: h.name, kind: h.kind, bookings: rows.filter((b) => b.hall_id === h.id).map(view) }))
-  res.json({ date: q.date, financial: money, sections, total: rows.filter((b) => b.status !== 'cancelled').length })
+  let catering = []
+  if (!q.hallId && q.group !== 'halls' && can(req.user, 'catering.view')) {
+    const co = (await query(
+      `SELECT o.id, o.reference, o.status, o.plates, o.delivery_time, o.serving_time, o.fulfilment_method, o.delivery_address, o.venue_name, o.notes, so.name AS so_name, c.name AS c_name, c.phone AS c_phone
+       FROM catering_orders o JOIN catering_service_options so ON so.id=o.service_option_id JOIN customers c ON c.id=o.customer_id
+       WHERE o.event_date = $1::date ORDER BY o.delivery_time NULLS LAST, o.reference`, [q.date])).rows
+    catering = co.map((o) => ({
+      id: o.id, reference: o.reference, status: o.status, customer: o.c_name, phone: o.c_phone, plates: o.plates, service: o.so_name,
+      deliveryTime: o.delivery_time ? hhmm(o.delivery_time) : '', servingTime: o.serving_time ? hhmm(o.serving_time) : '',
+      fulfilment: o.fulfilment_method === 'pickup' ? 'takeaway' : 'delivery', deliveryAddress: o.delivery_address || o.venue_name || '', notes: o.notes,
+    }))
+  }
+  const bookingCount = rows.filter((b) => b.status !== 'cancelled').length
+  const cateringCount = catering.filter((o) => o.status !== 'cancelled').length
+  res.json({ date: q.date, financial: money, sections, catering, total: bookingCount + cateringCount, bookingTotal: bookingCount, cateringTotal: cateringCount })
 })
 
 // ================= menu: dynamic categories + items (no prices, ever) =================

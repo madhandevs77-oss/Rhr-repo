@@ -33,7 +33,8 @@ export const fmtDateTime = (iso) =>
   new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 
 // ---------- Misc ----------
-export const fmt = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })
+const num = (n) => (Number.isFinite(Number(n)) ? Number(n) : 0) // null, '' and non-numeric text show as 0, never NaN
+export const fmt = (n) => { const v = num(n); return (v < 0 ? '-₹' : '₹') + Math.abs(v).toLocaleString('en-IN', { maximumFractionDigits: 2 }) }
 export const initials = (n) =>
   n ? n.trim().split(/\s+/).map((w) => w[0]).join('').toUpperCase().substring(0, 2) : '?'
 export const uid = (p = 'id') => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
@@ -50,5 +51,5 @@ const toMin = (t) => {
 }
 
 export const PAY_LABEL = { paid: 'Paid', partial: 'Part paid', unpaid: 'Unpaid', overpaid: 'Overpaid', none: 'No amount' }
-export const fmtMoney = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(Number(n || 0)) ? 0 : 2, maximumFractionDigits: 2 })
+export const fmtMoney = (n) => { const v = num(n); return (v < 0 ? '-₹' : '₹') + Math.abs(v).toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 }) }
 export const cap = (s) => String(s || '').replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase())

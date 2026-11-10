@@ -13,7 +13,7 @@ const KINDS = Object.keys(PERM)
 
 const draftIn = z.object({
   kind: z.enum(['booking', 'catering']),
-  data: z.record(z.any()),
+  data: z.record(z.string(), z.any()),
   hallId: uuid.nullable().optional(),
   customerName: z.string().trim().max(150).default(''),
 })

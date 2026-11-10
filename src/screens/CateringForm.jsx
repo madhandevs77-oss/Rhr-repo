@@ -27,7 +27,7 @@ export default function CateringForm({ nav, id, bookingId, draftId }) {
 }
 
 function Form({ nav, editing, categories, prices, bookings, presetBooking, draft }) {
-  const { options, settings, can, picked, clearPicked } = useApp()
+  const { options, reloadOptions, settings, can, picked, clearPicked } = useApp()
   const toast = useToast()
   const mgr = can('catering.priceOverride')
   const postConfirm = editing && ['confirmed', 'preparation', 'ready_for_dispatch', 'delivered', 'exception'].includes(editing.status)
@@ -35,7 +35,8 @@ function Form({ nav, editing, categories, prices, bookings, presetBooking, draft
   const [draftId, setDraftId] = useState(draft?.id || null)
   // dishes ticked on the Menu tab arrive here pre-selected (quantity 1; price from Catering Prices)
   const fromMenu = editing || draft ? [] : categories.flatMap((c) => c.items).filter((i) => picked.includes(i.id)).map((i) => ({ mealItemId: i.id, name: i.name, unit: prices[i.id]?.unit || 'plate', quantity: 1, unitPrice: prices[i.id]?.unitPrice ?? '' }))
-  useEffect(() => { if (picked.length) clearPicked() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (picked.length) clearPicked() }, [])  
+  useEffect(() => { reloadOptions().catch(() => {}) }, [reloadOptions])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [impact, setImpact] = useState(null)
@@ -47,7 +48,8 @@ function Form({ nav, editing, categories, prices, bookings, presetBooking, draft
     eventType: editing?.eventType || preBooking?.eventType || '', date: editing?.date || preBooking?.date || todayStr(), deliveryTime: editing?.deliveryTime || '', servingTime: editing?.servingTime || '',
     venueName: editing?.venueName || '', deliveryAddress: editing?.deliveryAddress || '', fulfilmentMethod: editing?.fulfilmentMethod || 'delivery', contactPerson: editing?.contactPerson || '', contactPhone: editing?.contactPhone || '',
     plates: editing?.plates ?? '', mealCategory: editing?.mealCategory || 'lunch',
-    pricingMode: editing?.pricingMode || draft?.data.f?.pricingMode || (fromMenu.some((i) => i.unitPrice === '') ? 'per_plate' : 'item_based'), // unpriced dishes: price by plate pricePerPlate: editing?.pricePerPlate ?? '',
+    pricingMode: editing?.pricingMode || draft?.data.f?.pricingMode || (fromMenu.some((i) => i.unitPrice === '') ? 'per_plate' : 'item_based'), // unpriced dishes: price by plate
+    pricePerPlate: editing?.pricePerPlate ?? '',
     items: editing?.items.map((i) => ({ mealItemId: i.mealItemId, menuItemId: i.menuItemId, name: i.name, unit: i.unit, quantity: i.quantity, unitPrice: i.unitPrice })) || fromMenu,
     dietaryInstructions: editing?.dietaryInstructions || '', packagingRequirements: editing?.packagingRequirements || '', servingRequirements: editing?.servingRequirements || '', notes: editing?.notes || '',
     staffRequired: editing?.staffRequired || false, staffCount: editing?.staffCount || '', staffCharge: editing?.staffCharge || '', utensilsRequired: editing?.utensilsRequired || false, equipmentNotes: editing?.equipmentNotes || '', equipmentCharge: editing?.equipmentCharge || '',
@@ -57,6 +59,7 @@ function Form({ nav, editing, categories, prices, bookings, presetBooking, draft
     ...(!editing && draft?.data.f ? draft.data.f : {}),
   }))
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
+  useEffect(() => { if (!f.serviceOptionId) { const first = options.find((o) => o.active); if (first) setF((s) => ({ ...s, serviceOptionId: first.id })) } }, [options, f.serviceOptionId])
   const opt = options.find((o) => o.id === f.serviceOptionId)
   const lockedOpt = postConfirm
 
@@ -142,6 +145,9 @@ function Form({ nav, editing, categories, prices, bookings, presetBooking, draft
       {postConfirm && <div className="inv-banner">This order is {editing.status.replace(/_/g, ' ')}. Changing plates, menu or price needs manager approval and a reason, and the previous version is kept.</div>}
 
       <fieldset className="fs"><legend>Service type</legend>
+        {!options.some((o) => o.active || o.id === f.serviceOptionId) && (
+          <p className="form-error" role="alert">No service types are switched on. {can('settings.edit') ? 'Turn them on in More → Settings → Bulk catering service options.' : 'Ask an administrator to turn them on in Settings.'}</p>
+        )}
         <div className="opt-picker" role="radiogroup">
           {options.filter((o) => o.active || o.id === f.serviceOptionId).map((o) => (
             <button type="button" role="radio" aria-checked={f.serviceOptionId === o.id} key={o.id} className={`opt-pick ${f.serviceOptionId === o.id ? 'selected' : ''}`} disabled={lockedOpt && o.id !== f.serviceOptionId} onClick={() => setF((s) => ({ ...s, serviceOptionId: o.id }))}>

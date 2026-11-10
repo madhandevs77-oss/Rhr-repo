@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 // All configuration comes from environment variables. Nothing secret is ever sent to the browser.
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,6 +19,8 @@ export const config = {
   migrateDatabaseUrl: env.MIGRATE_DATABASE_URL || '',
   dbPoolMax: int(env.DB_POOL_MAX, 10),
   // undefined = let the connection string decide (sslmode=require etc.); true/false forces TLS on/off.
+  // PEM file with the CA that signed the database certificate (Amazon RDS: global-bundle.pem). Turns TLS on with full verification.
+  dbSslCaFile: env.DATABASE_SSL_CA_FILE || '',
   dbSsl: env.DATABASE_SSL === undefined || env.DATABASE_SSL === '' ? undefined : bool(env.DATABASE_SSL),
   dbConnectTimeoutMs: int(env.DB_CONNECT_TIMEOUT_MS, 20000), // serverless Postgres may need a few seconds to wake
 
@@ -26,8 +29,13 @@ export const config = {
   cookieSecure: bool(env.COOKIE_SECURE, env.NODE_ENV === 'production'),
   trustProxy: bool(env.TRUST_PROXY, !!env.RENDER), // Render always sits behind its own proxy
 
-  // hall photo storage: 'local' (disk; development / Docker volume) or 'supabase' (Supabase Storage; free-tier cloud)
+  // hall photo storage: 'local' (disk; development / Docker volume), 'supabase' (Supabase Storage) or 's3' (Amazon S3; credentials come from the AWS default chain / IAM role)
   storageDriver: (env.STORAGE_DRIVER || 'local').toLowerCase(),
+  s3: {
+    bucket: env.S3_BUCKET || '',
+    region: env.AWS_REGION || env.AWS_DEFAULT_REGION || '',
+    endpoint: env.S3_ENDPOINT || '', // only for S3-compatible stores / local tests; leave empty on AWS
+  },
   supabase: {
     url: (env.SUPABASE_URL || '').replace(/\/+$/, ''),
     serviceKey: env.SUPABASE_SERVICE_ROLE_KEY || '', // server-side only; never sent to the browser
@@ -89,7 +97,9 @@ if (config.isProd) {
   if (/rhr_dev_pw|CHANGE_ME/.test(env.DATABASE_URL)) fatal('DATABASE_URL still contains a development/placeholder password.')
   if (!config.cookieSecure) console.warn('WARNING: COOKIE_SECURE is off in production. Sessions cookies will be sent over plain HTTP.')
 }
-if (!['local', 'supabase'].includes(config.storageDriver)) fatal(`STORAGE_DRIVER must be "local" or "supabase" (got "${config.storageDriver}").`)
+if (!['local', 'supabase', 's3'].includes(config.storageDriver)) fatal(`STORAGE_DRIVER must be "local", "supabase" or "s3" (got "${config.storageDriver}").`)
+if (config.storageDriver === 's3' && (!config.s3.bucket || !config.s3.region)) fatal('STORAGE_DRIVER=s3 needs S3_BUCKET and AWS_REGION.')
+if (config.dbSslCaFile && !fs.existsSync(config.dbSslCaFile)) fatal(`DATABASE_SSL_CA_FILE not found: ${config.dbSslCaFile}`)
 if (config.storageDriver === 'supabase') {
   if (!config.supabase.url || !config.supabase.serviceKey) fatal('STORAGE_DRIVER=supabase needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.')
   if (!/^https:\/\//.test(config.supabase.url)) fatal('SUPABASE_URL must start with https://')

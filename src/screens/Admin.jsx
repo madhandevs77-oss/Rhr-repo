@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, errMsg } from '../api'
 import BookingCard from '../components/BookingCard'
-import { Async, AsyncButton, Confirm, Empty, Field, Icon, Modal, MonthSelector, Tag, useToast } from '../components/common'
+import { Async, AsyncButton, Empty, Field, Icon, Modal, MonthSelector, Tag, useToast } from '../components/common'
 import { Messages, ReasonModal } from '../components/DocParts'
 import { useApp, useLoad } from '../store'
 import { addMonth, cap, currentYM, fmt, fmtDate, fmtDateTime, initials, monthKey, monthLabel } from '../utils'

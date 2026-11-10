@@ -8,7 +8,7 @@ import { businessBlock, fingerprint, listInvoices, reconcileInvoice } from './in
 import { bookingVars, enqueue, enqueueBill, eventView } from './notifications.js'
 import { loadPayments, paymentView, recordPayment } from './payments.js'
 import { bookingTotals, settlement } from './pricing.js'
-import { audit, getSetting, nextRef, raiseCounter, serializeCustomer, todayIST, upsertCustomer } from './support.js'
+import { audit, getSetting, nextRef, serializeCustomer, todayIST, upsertCustomer } from './support.js'
 
 // ---------------- input schemas ----------------
 const optPhone = z.preprocess((v) => (v === '' || v === null ? undefined : v), phone10.optional())
@@ -46,6 +46,8 @@ const base = z.object({
   foodItems: z.array(z.object({ id: z.string().max(60).nullable().optional(), name: z.string().trim().min(1).max(120), category: z.string().trim().max(80).optional() })).max(300).default([]),
   foodStatus: z.enum(['pending', 'confirmed']).default('pending'),
   notes: z.string().trim().max(2000).default(''),
+  fulfilment: z.enum(['delivery', 'takeaway']).nullable().optional(), // Outsource sections only
+  deliveryAddress: z.string().trim().max(500).default(''),
 })
 export const createSchema = base.extend({ advance: advanceIn.optional() })
 export const updateSchema = base.extend({
@@ -90,7 +92,7 @@ export function bookingView(st, extra = {}) {
   const customer = serializeCustomer({ id: b.customer_id, name: b.c_name, phone: b.c_phone, alt_phone: b.c_alt, email: b.c_email, address: b.c_address, notes: b.c_notes, language: b.c_lang, message_consent: b.c_consent, billing_name: b.c_bn, billing_address: b.c_ba, billing_tax_id: b.c_bt })
   return {
     id: b.id, reference: b.reference, status: b.status, version: b.version, createdAt: b.created_at,
-    customer, hallId: b.hall_id, hallName: b.hall_name, hallKind: b.hall_kind || null, defaultCharge: Number(b.hall_default_charge || 0), meals: b.meals || [], foodAmount: Number(b.food_amount || 0), extraAmount: Number(b.extra_amount || 0), eventType: b.event_type, date: b.event_date, startTime: b.start_time.slice(0, 5), endTime: b.end_time.slice(0, 5),
+    customer, hallId: b.hall_id, hallName: b.hall_name, hallKind: b.hall_kind || null, fulfilment: b.fulfilment || null, deliveryAddress: b.delivery_address || '', defaultCharge: Number(b.hall_default_charge || 0), meals: b.meals || [], foodAmount: Number(b.food_amount || 0), extraAmount: Number(b.extra_amount || 0), eventType: b.event_type, date: b.event_date, startTime: b.start_time.slice(0, 5), endTime: b.end_time.slice(0, 5),
     hallCharge: Number(b.hall_charge), discount: Number(b.discount), taxRate: Number(b.tax_rate),
     charges: st.charges.map((c) => ({ id: c.id, description: c.description, quantity: Number(c.quantity), unitPrice: Number(c.unit_price) })),
     catering: b.catering_plates ? { plates: b.catering_plates, pricePerPlate: Number(b.catering_price_per_plate || 0), notes: b.catering_notes } : null,
@@ -198,6 +200,7 @@ export async function createBooking(db, ctx, raw) {
   if (toPaise(b.discount) > 0 && !fin2) throw forbidden('Only a manager or admin can give a discount')
   const taxRate = fin2 && b.taxRate ? b.taxRate : 0
   toPaise(hallCharge); toPaise(b.discount); toPaise(b.foodAmount); toPaise(b.extraAmount) // validate
+  const ful = fulfilmentOf(hall, b)
   const foodItems = await snapshotFoodItems(db, b.foodItems, [])
   const customer = await upsertCustomer(db, { ...b.customer, consentSource: 'booking_form' })
 
@@ -210,10 +213,10 @@ export async function createBooking(db, ctx, raw) {
   try {
     const r = await db.query(
       `INSERT INTO bookings (reference, customer_id, hall_id, event_type, event_date, start_time, end_time, hall_charge, discount, tax_rate,
-         catering_plates, catering_price_per_plate, catering_notes, food_items, food_status, notes, status, created_by, meals, food_amount, extra_amount)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'tentative',$17,$18,$19,$20) RETURNING id`,
+         catering_plates, catering_price_per_plate, catering_notes, food_items, food_status, notes, status, created_by, meals, food_amount, extra_amount, fulfilment, delivery_address)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'tentative',$17,$18,$19,$20,$21,$22) RETURNING id`,
       [reference, customer.id, b.hallId, b.eventType || hall.name, b.date, b.startTime, b.endTime, hallCharge, b.discount, taxRate,
-       b.catering?.plates ?? null, b.catering?.pricePerPlate ?? null, b.catering?.notes ?? '', JSON.stringify(foodItems), b.foodStatus, b.notes, ctx.user?.id || null, b.meals, b.foodAmount, b.extraAmount],
+       b.catering?.plates ?? null, b.catering?.pricePerPlate ?? null, b.catering?.notes ?? '', JSON.stringify(foodItems), b.foodStatus, b.notes, ctx.user?.id || null, b.meals, b.foodAmount, b.extraAmount, ful.fulfilment, ful.address],
     )
     id = r.rows[0].id
   } catch (e) {
@@ -231,13 +234,20 @@ export async function createBooking(db, ctx, raw) {
 }
 
 // ---------------- update ----------------
-const label = { eventType: 'Event type', date: 'Date', startTime: 'Start time', endTime: 'End time', hallName: 'Hall', hallCharge: 'Hall charge', discount: 'Discount', taxRate: 'Tax rate', cateringPlates: 'Catering plates', cateringPrice: 'Price per plate', foodAmount: 'Food service amount', extraAmount: 'Extra amount', meals: 'Meals', customerName: 'Customer name', customerPhone: 'Customer phone', notes: 'Notes', foodStatus: 'Food status', foodItems: 'Food items', charges: 'Additional charges' }
+/** Outsource sections are delivery or takeaway (default takeaway); delivery needs an address. Other halls carry neither. */
+function fulfilmentOf(hall, b) {
+  if (hall.kind !== 'outsource') return { fulfilment: null, address: '' }
+  const fulfilment = b.fulfilment || 'takeaway'
+  if (fulfilment === 'delivery' && !b.deliveryAddress) throw badRequest('Enter the delivery address', undefined, 'DELIVERY_ADDRESS_REQUIRED')
+  return { fulfilment, address: fulfilment === 'delivery' ? b.deliveryAddress : '' }
+}
+const label = { eventType: 'Event type', date: 'Date', startTime: 'Start time', endTime: 'End time', hallName: 'Hall', hallCharge: 'Hall charge', discount: 'Discount', taxRate: 'Tax rate', cateringPlates: 'Catering plates', cateringPrice: 'Price per plate', foodAmount: 'Food service amount', extraAmount: 'Extra amount', fulfilment: 'Delivery / takeaway', deliveryAddress: 'Delivery address', meals: 'Meals', customerName: 'Customer name', customerPhone: 'Customer phone', notes: 'Notes', foodStatus: 'Food status', foodItems: 'Food items', charges: 'Additional charges' }
 function snapshotForDiff(st) {
   const b = st.row
   return {
     eventType: b.event_type, date: b.event_date, startTime: b.start_time.slice(0, 5), endTime: b.end_time.slice(0, 5), hallName: b.hall_name,
     hallCharge: Number(b.hall_charge), discount: Number(b.discount), taxRate: Number(b.tax_rate), cateringPlates: b.catering_plates || 0, cateringPrice: Number(b.catering_price_per_plate || 0),
-    foodAmount: Number(b.food_amount || 0), extraAmount: Number(b.extra_amount || 0), meals: (b.meals || []).join(', '), customerName: b.c_name, customerPhone: b.c_phone, notes: b.notes, foodStatus: b.food_status,
+    foodAmount: Number(b.food_amount || 0), extraAmount: Number(b.extra_amount || 0), meals: (b.meals || []).join(', '), customerName: b.c_name, customerPhone: b.c_phone, notes: b.notes, foodStatus: b.food_status, fulfilment: b.fulfilment || '', deliveryAddress: b.delivery_address || '',
     foodItems: (b.food_items || []).map((f) => f.name).sort().join(', '), charges: st.charges.map((c) => `${c.description} ${Number(c.quantity)}×${Number(c.unit_price)}`).join('; '),
   }
 }
@@ -293,15 +303,16 @@ export async function updateBooking(db, ctx, id, raw) {
   }
 
   // ---- apply ----
+  const ful = fulfilmentOf(hall, b)
   const foodItems = await snapshotFoodItems(db, b.foodItems, cur.food_items)
   const customer = await upsertCustomer(db, { ...b.customer, consentSource: 'booking_edit' })
   try {
     await db.query(
       `UPDATE bookings SET customer_id=$2, hall_id=$3, event_type=$4, event_date=$5, start_time=$6, end_time=$7, hall_charge=$8, discount=$9, tax_rate=$10,
-         catering_plates=$11, catering_price_per_plate=$12, catering_notes=$13, food_items=$14, food_status=$15, notes=$16, meals=$18, food_amount=$19, extra_amount=$20, version=version+1, updated_at=now()
+         catering_plates=$11, catering_price_per_plate=$12, catering_notes=$13, food_items=$14, food_status=$15, notes=$16, meals=$18, food_amount=$19, extra_amount=$20, fulfilment=$21, delivery_address=$22, version=version+1, updated_at=now()
        WHERE id=$1 AND version=$17`,
       [id, customer.id, b.hallId, b.eventType || hall.name, b.date, b.startTime, b.endTime, b.hallCharge ?? cur.hall_charge, b.discount, newTax, b.catering?.plates ?? null, b.catering?.pricePerPlate ?? null,
-       b.catering?.notes ?? '', JSON.stringify(foodItems), b.foodStatus, b.notes, b.expectedVersion, b.meals, b.foodAmount, b.extraAmount],
+       b.catering?.notes ?? '', JSON.stringify(foodItems), b.foodStatus, b.notes, b.expectedVersion, b.meals, b.foodAmount, b.extraAmount, ful.fulfilment, ful.address],
     )
   } catch (e) {
     await mapConstraint(db, e, { hallId: b.hallId, date: b.date, start: b.startTime, end: b.endTime, ignoreId: id, hallName: hall.name })

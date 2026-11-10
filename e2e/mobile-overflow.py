@@ -5,7 +5,7 @@ with sync_playwright() as p:
     pg.goto('http://localhost:3001/'); pg.wait_for_selector('input')
     i=pg.locator('input'); i.nth(0).fill('admin'); i.nth(1).fill('Admin12345x'); pg.click('button:has-text("Sign in")')
     pg.wait_for_selector('[data-testid=manage-halls]')
-    pg.locator('.bottom-nav button',has_text='Catering').click(); pg.wait_for_timeout(500)
+    pg.locator('.bottom-nav button',has_text='Menu').click(); pg.get_by_test_id('orders-tab').click(); pg.wait_for_timeout(500)
     pg.locator('.fab').first.click(); pg.wait_for_timeout(800)
     # overflow audit across screens
     print('scrollWidth',pg.evaluate('document.documentElement.scrollWidth'),'client',pg.evaluate('document.documentElement.clientWidth'))

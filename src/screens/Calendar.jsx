@@ -55,12 +55,12 @@ export default function Calendar({ nav, hallId: initialHall }) {
           <button className="cal-today-btn" onClick={() => { setYm(currentYM()); setSelected(todayStr()) }}>Today</button>
         </div>
         <div className="cal-grid">{DOW.map((d) => <div key={d} className="cal-dow">{d}</div>)}{cells}</div>
-        <div className="cal-legend"><span><i style={{ background: 'var(--accent)' }} />Has booking(s)</span><span><i style={{ border: '1.5px solid var(--accent)', background: 'transparent' }} />Today</span></div>
+        <div className="cal-legend"><span><i style={{ background: 'var(--accent)' }} />Has booking(s) or catering order(s)</span><span><i style={{ border: '1.5px solid var(--accent)', background: 'transparent' }} />Today</span></div>
       </div>
       <div className="cal-panel">
         <div className="cal-panel__head">
           <span className="cal-panel__date">{fmtDateLong(selected)}</span>
-          <span className="cal-panel__count">{day.data ? (day.data.total ? `${day.data.total} booking${day.data.total > 1 ? 's' : ''}` : 'Free') : ''}</span>
+          <span className="cal-panel__count">{day.data ? (day.data.total ? `${day.data.bookingTotal ? `${day.data.bookingTotal} booking${day.data.bookingTotal > 1 ? 's' : ''}` : ''}${day.data.bookingTotal && day.data.cateringTotal ? ' · ' : ''}${day.data.cateringTotal ? `${day.data.cateringTotal} catering` : ''}` : 'Free') : ''}</span>
         </div>
         <Async res={day}>
           {(d) => (
@@ -73,13 +73,28 @@ export default function Calendar({ nav, hallId: initialHall }) {
                       <span className="cal-bk__time">{fmtTime(b.startTime)}–{fmtTime(b.endTime)}</span>
                       <span className="cal-bk__main"><strong>{b.customer}</strong> · {b.phone}</span>
                       <span className="cal-bk__meta"><em className={`tag tag--status-${b.status}`}>{b.status}</em></span>
+                      {b.fulfilment && <span className="cal-bk__meta" data-testid="cal-fulfilment"><em className="tag">{b.fulfilment === 'delivery' ? 'Delivery' : 'Takeaway'}</em>{b.fulfilment === 'delivery' && b.deliveryAddress ? ` ${b.deliveryAddress}` : ''}</span>}
                       {d.financial && <span className="cal-bk__meta">Total {fmt(b.total)} · Balance {fmt(Math.max(0, b.balance))}</span>}
                       {b.notes && <span className="cal-bk__note">📝 {b.notes}</span>}
                     </button>
                   ))}
                 </div>
               ))}
-              {d.total === 0 && <Empty>No bookings on this day</Empty>}
+              {d.catering?.length > 0 && (
+                <div className="cal-sec" data-testid="cal-catering">
+                  <div className="cal-sec__title">Catering orders<span>{d.cateringTotal}</span></div>
+                  {d.catering.map((o) => (
+                    <button className={`cal-bk ${o.status === 'cancelled' ? 'is-cancelled' : ''}`} key={o.id} onClick={() => nav.go('cDetail', { id: o.id })}>
+                      <span className="cal-bk__time">{o.deliveryTime ? fmtTime(o.deliveryTime) : 'Time not set'}{o.servingTime ? ` · serve ${fmtTime(o.servingTime)}` : ''}</span>
+                      <span className="cal-bk__main"><strong>{o.customer}</strong> · {o.phone}</span>
+                      <span className="cal-bk__meta"><em className={`tag tag--status-${o.status}`}>{o.status.replace(/_/g, ' ')}</em> {o.reference} · {o.plates} plates · {o.service}</span>
+                      <span className="cal-bk__meta"><em className="tag">{o.fulfilment === 'delivery' ? 'Delivery' : 'Takeaway'}</em>{o.fulfilment === 'delivery' && o.deliveryAddress ? ` ${o.deliveryAddress}` : ''}</span>
+                      {o.notes && <span className="cal-bk__note">📝 {o.notes}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {d.total === 0 && <Empty>No bookings or catering orders on this day</Empty>}
             </>
           )}
         </Async>

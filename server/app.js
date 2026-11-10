@@ -4,7 +4,7 @@ import path from 'node:path'
 import express from 'express'
 import helmet from 'helmet'
 import { config } from './config.js'
-import { externalImageOrigin } from './lib/storage.js'
+import { externalImageOrigin, readObject } from './lib/storage.js'
 import { authenticate, csrfGuard, requireAuth } from './lib/auth.js'
 import { AppError } from './lib/errors.js'
 import { authRouter, usersRouter } from './routes/auth.js'
@@ -24,7 +24,32 @@ export function createApp() {
     crossOriginEmbedderPolicy: false,
   }))
   // uploaded hall photos: server-generated names only, never executed
+  // S3 keeps the bucket private: the app streams each image (immutable, cacheable for 30 days by browsers/CDN).
+  app.get(/^\/uploads\/(.+)$/, async (req, res, next) => {
+    if (config.storageDriver !== 's3') return next()
+    try {
+      const obj = await readObject(req.params[0])
+      if (!obj) return res.status(404).end()
+      res.set({ 'Content-Type': obj.contentType, 'Cache-Control': 'public, max-age=2592000, immutable', 'X-Content-Type-Options': 'nosniff' })
+      if (obj.length) res.set('Content-Length', String(obj.length))
+      obj.body.on('error', () => res.destroy())
+      obj.body.pipe(res)
+    } catch (e) {
+      if (/Invalid storage key/.test(e.message)) return res.status(404).end()
+      console.error('[storage] image read failed:', e.message)
+      res.status(502).json({ error: { code: 'STORAGE_UNAVAILABLE', message: 'Image storage is not reachable right now.' } })
+    }
+  })
   app.use('/uploads', express.static(config.uploadDir, { index: false, dotfiles: 'deny', maxAge: '30d', immutable: true, setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff') }))
+
+  // Test tooling only: ROUTE_COVERAGE_FILE makes every /api request append "METHOD path status" (see scripts/route-coverage.mjs)
+  if (process.env.ROUTE_COVERAGE_FILE) {
+    app.use('/api', (req, res, next) => {
+      const line = `${req.method} ${req.originalUrl.split('?')[0]}`
+      res.on('finish', () => fs.appendFileSync(process.env.ROUTE_COVERAGE_FILE, `${line} ${res.statusCode}\n`))
+      next()
+    })
+  }
 
   app.get('/healthz', (_req, res) => res.json({ ok: true })) // shallow liveness probe (does not touch the database)
 
@@ -71,7 +96,7 @@ export function createApp() {
     app.get(/^\/(?!api\/|uploads\/).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')))
   }
 
-  // eslint-disable-next-line no-unused-vars
+   
   app.use((err, req, res, _next) => {
     if (err instanceof AppError) return res.status(err.status).json({ error: { code: err.code, message: err.message, details: err.details } })
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: { code: 'BAD_JSON', message: 'Malformed JSON body' } })

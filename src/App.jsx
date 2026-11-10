@@ -10,7 +10,6 @@ import MenuPick from './screens/MenuPick'
 import Bookings from './screens/Bookings'
 import CateringDetail from './screens/CateringDetail'
 import CateringForm from './screens/CateringForm'
-import CateringList from './screens/CateringList'
 import Halls from './screens/Halls'
 import Home from './screens/Home'
 import { InvoiceView, Invoices } from './screens/Invoices'
@@ -22,12 +21,11 @@ const TABS = [
   ['home', 'Home', 'home'],
   ['bookings', 'Bookings', 'list'],
   ['calendar', 'Calendar', 'cal'],
-  ['catering', 'Catering', 'truck'],
   ['menuPick', 'Menu', 'food'],
   ['more', 'More', 'more'],
 ]
 const TITLES = {
-  form: 'Hall Booking', detail: 'Hall Booking', cForm: 'Catering Order', cDetail: 'Catering Order', customers: 'Customers', halls: 'Manage Halls', foodMgmt: 'Catering Prices', mealMenu: 'Catering Menu', calendarSec: 'Calendar', secHistory: 'Section History',
+  form: 'Hall Booking', detail: 'Hall Booking', cForm: 'New Order', cDetail: 'Order', customers: 'Customers', halls: 'Manage Halls', foodMgmt: 'Catering Prices', mealMenu: 'Catering Menu', calendarSec: 'Calendar', secHistory: 'Section History',
   reports: 'Reports', audit: 'Audit Log', settings: 'Settings', invoices: 'Invoices', invoice: 'Invoice', payments: 'Payments to Verify', notifications: 'Messages', vendors: 'Vendors', users: 'Users', password: 'Change Password',
 }
 
@@ -67,7 +65,6 @@ function Shell() {
     case 'calendarSec': screen = <CalendarScreen nav={nav} hallId={cur.hallId} key={cur.hallId} />; break
     case 'mealMenu': screen = <MenuManage nav={nav} />; break
     case 'menuPick': screen = <MenuPick nav={nav} />; break
-    case 'catering': screen = <CateringList nav={nav} />; break
     case 'more': screen = <More nav={nav} />; break
     case 'detail': screen = <BookingDetail nav={nav} id={cur.id} key={cur.id} />; break
     case 'form': screen = <BookingRouter nav={nav} id={cur.id} hallId={cur.hallId} draftId={cur.draftId} key={(cur.id || 'new') + (cur.hallId || '') + (cur.draftId || '')} />; break

@@ -18,7 +18,7 @@ with sync_playwright() as p:
             pg.wait_for_timeout(500); w=pg.evaluate('document.documentElement.scrollWidth-document.documentElement.clientWidth'); txt=pg.locator('main').inner_text()
             bad=[k for k in ['undefined','NaN','[object','Cannot read','Something went wrong'] if k in txt]
             seen.append((label,w,bad))
-        for t in ['Home','Bookings','Calendar','Catering','Menu','More']:
+        for t in ['Home','Bookings','Calendar','Menu','More']:
             pg.locator('.bottom-nav button',has_text=t).click(); visit(t)
         pg.locator('.bottom-nav button',has_text='More').click(); n=pg.locator('.more-item').count()
         for k in range(n):

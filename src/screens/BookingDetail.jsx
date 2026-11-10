@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, errMsg } from '../api'
-import { Async, Empty, Field, Icon, Modal, AsyncButton, useToast } from '../components/common'
+import { Async, Field, Icon, Modal, AsyncButton, useToast } from '../components/common'
 import { Invoices, Messages, MoneySummary, Payments, Row, Section, useSections } from '../components/DocParts'
 import MenuPrint from '../components/MenuPrint'
 import { useApp, useLoad } from '../store'
@@ -51,6 +51,8 @@ function Detail({ nav, b, reload }) {
         <Row l="Date" v={fmtDateLong(b.date)} />
         <Row l="Time" v={`${fmtTime(b.startTime)} - ${fmtTime(b.endTime)}`} />
         <Row l="Hall" v={b.hallName} />
+        {b.fulfilment && <Row l="Service" v={b.fulfilment === 'delivery' ? 'Delivery' : 'Takeaway'} />}
+        {b.fulfilment === 'delivery' && <Row l="Delivery address" v={b.deliveryAddress} />}
         {b.customer.address && <Row l="Address" v={b.customer.address} />}
         {b.notes && <Row l="Notes" v={b.notes} />}
         {cancelled && <Row l="Cancelled" v={`${b.cancelledAt ? fmtDate(b.cancelledAt.slice(0, 10)) : ''}${b.cancelReason ? ` · ${b.cancelReason}` : ''}`} />}

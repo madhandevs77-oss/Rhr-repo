@@ -115,7 +115,7 @@ function PhotoManager({ hall }) {
   const replaceInput = useRef(null)
   const images = hall.images
 
-  useEffect(() => () => staged.forEach((s) => URL.revokeObjectURL(s.url)), []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => staged.forEach((s) => URL.revokeObjectURL(s.url)), [])  
 
   const stage = (files) => {
     setErr('')

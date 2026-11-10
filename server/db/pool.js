@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import pg from 'pg'
 import { config } from '../config.js'
 
@@ -6,16 +7,29 @@ pg.types.setTypeParser(1082, (v) => v)
 pg.types.setTypeParser(1083, (v) => v)
 // NUMERIC stays a string; all arithmetic goes through lib/money.js (integer paise).
 
+/**
+ * Connection options for TLS. An explicit setting (DATABASE_SSL / DATABASE_SSL_CA_FILE) overrides sslmode in the URL,
+ * because node-postgres lets URL parameters win; so the URL's ssl* parameters are removed when we supply our own.
+ */
+export function connectionOptions(url) {
+  const explicit = config.dbSsl !== undefined || config.dbSslCaFile
+  if (!explicit) return { connectionString: url }
+  const u = new URL(url)
+  for (const k of ['sslmode', 'sslcert', 'sslkey', 'sslrootcert', 'uselibpqcompat']) u.searchParams.delete(k)
+  const useSsl = config.dbSsl === undefined ? true : config.dbSsl
+  const ssl = !useSsl ? false : { rejectUnauthorized: true, ...(config.dbSslCaFile ? { ca: fs.readFileSync(config.dbSslCaFile, 'utf8') } : {}) }
+  return { connectionString: u.toString(), ssl }
+}
+
 let pool
 export function getPool(url = config.databaseUrl) {
   if (!pool) {
     pool = new pg.Pool({
-      connectionString: url,
+      ...connectionOptions(url),
       max: config.dbPoolMax,
       connectionTimeoutMillis: config.dbConnectTimeoutMs,
       idleTimeoutMillis: 30000, // release idle sockets before a serverless database suspends them
       keepAlive: true,
-      ...(config.dbSsl === undefined ? {} : { ssl: config.dbSsl ? { rejectUnauthorized: true } : false }),
     })
     // An idle client can be killed by the database (autosuspend, failover). Without a handler this crashes the process.
     pool.on('error', (e) => console.error('[db] idle client error:', e.message))
@@ -69,8 +83,7 @@ export async function waitForDb(p = getPool(), { attempts = 6, delayMs = 3000, l
 export async function runMigrations(migrate, { log = () => {} } = {}) {
   const url = config.migrateDatabaseUrl || config.databaseUrl
   const p = new pg.Pool({
-    connectionString: url, max: 1, connectionTimeoutMillis: config.dbConnectTimeoutMs,
-    ...(config.dbSsl === undefined ? {} : { ssl: config.dbSsl ? { rejectUnauthorized: true } : false }),
+    ...connectionOptions(url), max: 1, connectionTimeoutMillis: config.dbConnectTimeoutMs,
   })
   p.on('error', (e) => console.error('[db] migration client error:', e.message))
   try {

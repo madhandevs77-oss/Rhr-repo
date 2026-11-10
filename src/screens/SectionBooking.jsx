@@ -35,6 +35,7 @@ function Form({ nav, editing, hallId, categories, draft }) {
     name: editing?.customer.name || '', phone: editing?.customer.phone || '', altPhone: editing?.customer.altPhone || '', email: editing?.customer.email || '',
     date: editing?.date || todayStr(), startTime: editing?.startTime || '', endTime: editing?.endTime || '', notes: editing?.notes || '',
     hallCharge: editing ? editing.hallCharge : '', extraAmount: editing?.extraAmount || '', removeTax: false, charges: editing?.charges.map((c) => ({ description: c.description, amount: c.quantity * c.unitPrice })) || [],
+    fulfilment: editing?.fulfilment || 'takeaway', deliveryAddress: editing?.deliveryAddress || '',
     foodAmount: editing?.foodAmount || '', discount: editing?.discount || '', foodConfirmed: editing ? editing.foodStatus === 'confirmed' : false,
     advance: '', payDate: todayStr(), payRef: '', verifyNow: fin,
     ...(!editing && draft?.data.f ? draft.data.f : {}),
@@ -44,6 +45,8 @@ function Form({ nav, editing, hallId, categories, draft }) {
   const [sel, setSel] = useState(() => draft?.data.sel || initialSplit())
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }))
   const hall = sections.find((h) => h.id === f.hallId)
+  const out = !!hall && isOut(hall) // Outsource sections: delivery or takeaway instead of the hall details
+  const sh = out ? 1 : 0 // shifts the step numbers when the delivery card is shown
 
   useEffect(() => { if (!endTouched && f.startTime) setF((s) => ({ ...s, endTime: plus3h(s.startTime) })) }, [f.startTime, endTouched])
 
@@ -76,6 +79,7 @@ function Form({ nav, editing, hallId, categories, draft }) {
     if (!editing && f.date < todayStr()) return 'Date cannot be in the past'
     if (!f.startTime || !f.endTime) return 'Enter start and end time'
     if (f.endTime <= f.startTime) return 'End time must be after the start time (same day)'
+    if (out && f.fulfilment === 'delivery' && !f.deliveryAddress.trim()) return 'Enter the delivery address'
     if (clash) return `${hall?.name} is already booked ${fmtTime(clash.startTime)}–${fmtTime(clash.endTime)} for ${clash.customer.name}`
     if (f.hallCharge !== '' && num(f.hallCharge) < 0) return 'Maintenance charge cannot be negative'
     if (num(f.extraAmount) < 0) return 'Extra amount cannot be negative'
@@ -97,6 +101,7 @@ function Form({ nav, editing, hallId, categories, draft }) {
     ...(editing?.eventType ? { eventType: editing.eventType } : {}), ...(editing?.catering ? { catering: editing.catering } : {}), ...(editing && fin && f.removeTax ? { taxRate: 0 } : {}),
     foodItems: [...selected.values()].map((x) => ({ id: x.id, name: x.name, category: x.category })),
     foodStatus: f.foodConfirmed ? 'confirmed' : 'pending',
+    ...(out ? { fulfilment: f.fulfilment, deliveryAddress: f.fulfilment === 'delivery' ? f.deliveryAddress.trim() : '' } : {}),
   })
 
   async function save(confirm, reason) {
@@ -177,26 +182,42 @@ function Form({ nav, editing, hallId, categories, draft }) {
         </div>
       </fieldset>
 
+      {out && (
+        <fieldset className="secform__card" data-testid="fulfilment-card">
+          <legend>4 · Delivery or takeaway</legend>
+          <div className="sec-picker" role="radiogroup" aria-label="Delivery or takeaway">
+            {[['takeaway', 'Takeaway'], ['delivery', 'Delivery']].map(([v, l]) => (
+              <button type="button" key={v} role="radio" aria-checked={f.fulfilment === v} className={`sec-pick ${f.fulfilment === v ? 'on' : ''}`} onClick={() => setF((s) => ({ ...s, fulfilment: v }))} data-testid={`fulfil-${v}`}>{l}</button>
+            ))}
+          </div>
+          {f.fulfilment === 'delivery' && (
+            <div className="form" style={{ marginTop: '.6rem' }}>
+              <Field label="Delivery address *"><textarea rows={3} value={f.deliveryAddress} onChange={set('deliveryAddress')} maxLength={500} placeholder="Full address with landmark" data-testid="delivery-address" /></Field>
+            </div>
+          )}
+        </fieldset>
+      )}
+
       <fieldset className="secform__card">
-        <legend>4 · Food menu</legend>
+        <legend>{4 + sh} · Food menu</legend>
         <p className="form-hint">Tick the items for each category (Royal Breakfast, Royal Lunch…). The booking time already tells the kitchen when to serve.</p>
         <MenuPicker categories={categories} selected={selected} setSelected={setSelected} />
         <label className="food-list__item" style={{ marginTop: '.6rem' }}><input type="checkbox" checked={f.foodConfirmed} onChange={(e) => setF((s) => ({ ...s, foodConfirmed: e.target.checked }))} /><span className="food-list__item-name">Menu confirmed with customer</span></label>
       </fieldset>
 
       <fieldset className="secform__card">
-        <legend>5 · Notes</legend>
+        <legend>{5 + sh} · Notes</legend>
         <textarea rows={3} value={f.notes} onChange={set('notes')} placeholder={`Notes for ${hall?.name || 'this booking'}`} aria-label="Notes" />
       </fieldset>
 
       <fieldset className="secform__card">
-        <legend>6 · Financial confirmation</legend>
+        <legend>{6 + sh} · Financial confirmation</legend>
         <p className="form-hint">{editing ? (editing.money.basis === 'estimate' ? 'Estimate — the booking becomes confirmed when an advance is verified.' : 'Confirmed amounts. Changes need confirmation and are recorded in the history.') : 'Estimate — enter the agreed food-service amount when you confirm with the customer.'}</p>
         {moneyLocked && <p className="form-hint">Only a manager or admin can change amounts on an existing booking.</p>}
         <div className="form">
-          <Field label="Maintenance charge (₹)" hint={hall ? `Default ${fmt(hall.defaultCharge)} per 3-hour booking${fin ? '' : ' — only a manager or admin can change it'}` : ''}>
+          {!out && <Field label="Maintenance charge (₹)" hint={hall ? `Default ${fmt(hall.defaultCharge)} per 3-hour booking${fin ? '' : ' — only a manager or admin can change it'}` : ''}>
             <input type="number" inputMode="decimal" min={0} value={f.hallCharge} placeholder={hall ? String(hall.defaultCharge) : ''} onChange={set('hallCharge')} disabled={!fin} />
-          </Field>
+          </Field>}
           <Field label="Extra amount (₹)" hint="One plain amount — no reason needed">
             <input type="number" inputMode="decimal" min={0} value={f.extraAmount} onChange={set('extraAmount')} />
           </Field>
@@ -218,7 +239,7 @@ function Form({ nav, editing, hallId, categories, draft }) {
           {fin && <Field label="Discount (₹)"><input type="number" inputMode="decimal" min={0} value={f.discount} onChange={set('discount')} /></Field>}
         </div>
         <div className="payment-summary">
-          <div className="payment-summary__row"><span>Maintenance charge</span><span>{fmt(maint)}</span></div>
+          {(!out || maint > 0) && <div className="payment-summary__row"><span>Maintenance charge</span><span>{fmt(maint)}</span></div>}
           {num(f.extraAmount) > 0 && <div className="payment-summary__row"><span>Extra amount</span><span>{fmt(num(f.extraAmount))}</span></div>}
           {extras > 0 && <div className="payment-summary__row"><span>Extra charges</span><span>{fmt(extras)}</span></div>}
           {legacyCatering > 0 && <div className="payment-summary__row"><span>Catering ({editing.catering.plates} plates)</span><span>{fmt(legacyCatering)}</span></div>}
@@ -236,7 +257,7 @@ function Form({ nav, editing, hallId, categories, draft }) {
 
       {!editing && (
         <fieldset className="secform__card">
-          <legend>7 · Advance</legend>
+          <legend>{7 + sh} · Advance</legend>
           <div className="form">
             <Field label="Advance (₹)" hint={fin ? '' : 'Recorded as “awaiting verification” until a manager confirms the money was received.'}>
               <input type="number" inputMode="decimal" min={0} value={f.advance} onChange={set('advance')} placeholder="0" />

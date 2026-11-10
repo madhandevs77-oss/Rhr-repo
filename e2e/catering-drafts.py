@@ -20,7 +20,7 @@ with sync_playwright() as p:
     b=p.chromium.launch(); ctx=b.new_context(viewport={'width':W,'height':900}); pg=ctx.new_page()
     pg.on('pageerror',lambda e:errs.append(str(e))); pg.on('response',lambda r: errs.append((r.status,r.url)) if r.status>=400 and 'auth' not in r.url else None)
     login(pg)
-    tabs=pg.locator('.bottom-nav button').all_inner_texts(); print('tabs',tabs); assert tabs==['Home','Bookings','Calendar','Catering','More'], tabs
+    tabs=pg.locator('.bottom-nav button').all_inner_texts(); print('tabs',tabs); assert tabs==['Home','Bookings','Calendar','Menu','More'], tabs
     # ---- More: two distinct entries
     pg.locator('.bottom-nav button',has_text='More').click()
     more=pg.locator('.more-item').all_inner_texts(); print('more',[m.replace('\n',' | ') for m in more if 'Catering' in m])
@@ -56,7 +56,7 @@ with sync_playwright() as p:
     pg.get_by_placeholder('Search items…').fill('Mini Samosa'); pg.wait_for_timeout(300)
     pg.locator('.mealmgmt__row',has_text='Mini Samosa').get_by_label('Edit price of Mini Samosa').click(); pg.get_by_label('Price (₹) *').fill('8'); pg.locator('.modal select').select_option('piece'); pg.get_by_role('button',name='Save').click(); pg.wait_for_timeout(600)
     # ---- Catering new order from the managed menu
-    pg.locator('.bottom-nav button',has_text='Catering').click(); pg.wait_for_selector('.fab'); pg.locator('.fab').click(); pg.wait_for_selector('.cform')
+    pg.locator('.bottom-nav button',has_text='Menu').click(); pg.get_by_test_id('orders-tab').click(); pg.wait_for_selector('.fab'); pg.locator('.fab').click(); pg.wait_for_selector('.cform')
     pg.locator('input').filter(has=pg.locator('xpath=self::*')).count()
     pg.get_by_label('Customer / organisation *').fill('Draft Caterer '+tag)
     pg.get_by_label('Phone *').fill('9000022233')

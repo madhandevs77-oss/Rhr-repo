@@ -1,9 +1,10 @@
+import time
 import datetime, sys
 from playwright.sync_api import sync_playwright
 S='/tmp/claude-0/-home-claude/3e1dbba9-5760-5a3f-aed0-24db8c232bfc/scratchpad/shots/'
 W=int(sys.argv[1]) if len(sys.argv)>1 else 390
 errs=[]
-d=(datetime.date.today()+datetime.timedelta(days=int(sys.argv[2]) if len(sys.argv)>2 else 33)).isoformat()
+d=(datetime.date.today()+datetime.timedelta(days=int(sys.argv[2]) if len(sys.argv)>2 else 120 + int(time.time()) % 400)).isoformat()
 with sync_playwright() as p:
     b=p.chromium.launch(); ctx=b.new_context(viewport={'width':W,'height':900}); pg=ctx.new_page()
     pg.on('pageerror',lambda e:errs.append(str(e))); pg.on('response',lambda r: errs.append((r.status,r.url)) if r.status>=400 else None)
@@ -49,7 +50,9 @@ with sync_playwright() as p:
     pg.screenshot(path=S+f's2_form_{W}.png',full_page=True)
     ov=pg.evaluate('document.documentElement.scrollWidth - document.documentElement.clientWidth'); print('overflow',ov)
     pg.get_by_role('button',name='Save & confirm booking').click()
-    pg.wait_for_selector('.booking-detail__name'); pg.wait_for_timeout(600)
+    try: pg.wait_for_selector('.booking-detail__name', timeout=8000)
+    except Exception: print('FORM ERROR:', pg.locator('.form-error').all_inner_texts()); pg.screenshot(path=S+'sf_err.png', full_page=True); raise
+    pg.wait_for_timeout(600)
     print('detail', pg.locator('.booking-detail__status').first.inner_text())
     pg.screenshot(path=S+f's3_detail_{W}.png',full_page=True)
     print('paymentrow', pg.locator('.payment-history-item__method').first.inner_text())
@@ -65,7 +68,7 @@ with sync_playwright() as p:
     pg.screenshot(path=S+f's4b_pay_{W}.png',full_page=True)
     # calendar
     pg.locator('.bottom-nav button',has_text='Calendar').click(); pg.wait_for_selector('.cal-grid')
-    for _ in range(2):
+    for _ in range(18):
         if pg.locator(f'[data-date="{d}"]').count(): break
         pg.locator('.month-selector button, .month-nav button').last.click(); pg.wait_for_timeout(500)
     pg.wait_for_timeout(500)

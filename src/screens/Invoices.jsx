@@ -59,7 +59,7 @@ function Viewer({ nav, d, autoPrint, reload }) {
   useEffect(() => {
     if (autoPrint && !done.current) { done.current = true; const t = setTimeout(print, 400); return () => clearTimeout(t) }
     return undefined
-  }, [autoPrint]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoPrint])  
 
   return (
     <>
