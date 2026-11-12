@@ -1,31 +1,55 @@
-// Minimal offline cache: network-first for the app shell, cache fallback when offline.
-const CACHE = 'rhr-booking-v2'
+// Offline shell for the PWA. PRIVACY RULE: only public, static files are ever cached.
+// Never cached: /api/*, /uploads/*, health checks, non-GET requests, cross-origin requests, anything the server marks no-store/private.
+const CACHE = 'rhr-static-v3'
+const SHELL = ['/', '/manifest.webmanifest', '/images/logo.png']
+
+// Same-origin GET for build output / public static files only.
+const STATIC = /^\/(assets\/|images\/|icons\/|fonts\/)|^\/(manifest\.webmanifest|favicon\.[a-z]+)$/
+const PRIVATE = /^\/(api|uploads|healthz)(\/|$)/
+
+function isCacheableRequest(req) {
+  if (req.method !== 'GET') return false
+  const u = new URL(req.url)
+  if (u.origin !== self.location.origin) return false
+  if (PRIVATE.test(u.pathname)) return false
+  return req.mode === 'navigate' || STATIC.test(u.pathname)
+}
+function isCacheableResponse(res) {
+  if (!res || !res.ok || res.type === 'opaque' || res.status !== 200) return false
+  const cc = (res.headers.get('Cache-Control') || '').toLowerCase()
+  if (/no-store|private/.test(cc)) return false
+  if (res.headers.get('Set-Cookie') || res.headers.get('Authorization')) return false
+  return true
+}
 
 self.addEventListener('install', (e) => {
   self.skipWaiting()
-    e.waitUntil(
-    caches.open(CACHE).then((c) =>
-      Promise.all(['./', './manifest.webmanifest', './images/logo.png'].map((u) => c.add(u).catch(() => {}))),
-    ),
-  )
+  e.waitUntil(caches.open(CACHE).then((c) => Promise.all(SHELL.map((u) => c.add(new Request(u, { cache: 'reload' })).catch(() => {})))))
 })
 
+// Delete EVERY other cache, including the earlier versions that stored API responses (customer, payment and invoice data).
 self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()),
-  )
+  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()))
+})
+
+// The page asks for a wipe on logout (defence in depth: nothing private is stored anyway).
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'CLEAR_CACHES') e.waitUntil(caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))))
 })
 
 self.addEventListener('fetch', (e) => {
-  const u = new URL(e.request.url)
-  // Never cache authenticated API data or uploaded files: always go to the network.
-    if (u.pathname.startsWith('/@vite') || u.pathname.startsWith('/@react-refresh') || u.pathname.startsWith('/@id/') || u.pathname.startsWith('/@fs/') || u.pathname.startsWith('/src/') || u.pathname.startsWith('/node_modules/') || u.pathname.startsWith('/__vite') || u.searchParams.has('t') || u.searchParams.has('import')) return
+  const req = e.request
+  if (!isCacheableRequest(req)) return // browser handles it: straight to the network, no cache involved
   e.respondWith(
-    fetch(e.request)
+    fetch(req)
       .then((res) => {
-        if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)) }
+        if (isCacheableResponse(res)) {
+          const copy = res.clone()
+          // navigations all share the one app shell entry
+          caches.open(CACHE).then((c) => c.put(req.mode === 'navigate' ? '/' : req, copy)).catch(() => {})
+        }
         return res
       })
-      .catch(() => caches.match(e.request).then((r) => r || caches.match('./'))),
+      .catch(() => caches.match(req.mode === 'navigate' ? '/' : req).then((r) => r || (req.mode === 'navigate' ? caches.match('/') : Response.error()))),
   )
 })

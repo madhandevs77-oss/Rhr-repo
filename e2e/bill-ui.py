@@ -11,9 +11,9 @@ with sync_playwright() as p:
     pg.wait_for_selector('[data-testid=manage-halls]')
     api=ctx.request
     halls=api.get('http://localhost:3001/api/halls').json()['halls']
-    d=(datetime.date.today()+datetime.timedelta(days=61)).isoformat()
+    d=(datetime.date.today()+datetime.timedelta(days=61+int(__import__('time').time())%400)).isoformat()
     bk=api.post('http://localhost:3001/api/bookings',headers=H,data=json.dumps({'customer':{'name':'Email Customer','phone':'9876500078','email':'customer@example.com','messageConsent':True},'hallId':halls[0]['id'],'eventType':'Wedding','date':d,'startTime':'09:00','endTime':'12:00','guests':50,'hallCharge':8000,'discount':0,'taxRate':0,'charges':[],'foodItems':[],'advance':{'amount':8000,'method':'Cash','paidOn':datetime.date.today().isoformat(),'verify':True,'idempotencyKey':'e2e-'+d}}))
-    print('create',bk.status); bid=bk.json()['booking']['id']
+    print('create',bk.status, bk.text()[:160] if bk.status>=400 else ''); bid=bk.json()['booking']['id']
     pg.wait_for_timeout(3500)  # worker sends (mock)
     pg.goto('http://localhost:3001/'); pg.wait_for_selector('[data-testid=manage-halls]')
     pg.get_by_placeholder('Search').first.fill('Email Customer'); pg.wait_for_timeout(900)

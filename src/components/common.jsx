@@ -107,7 +107,7 @@ const PATHS = {
   arrowR: <path d="M5 12h14M12 5l7 7-7 7" />,
   trash: (<><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" /></>),
 }
-export function Icon({ name, size = 22, fill }) {
+export function Icon({ name, size = 22 }) {
   if (name === 'wa')
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">

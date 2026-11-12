@@ -18,7 +18,7 @@ import { auditRouter, dataRouter, healthHandler, integrationsRouter, notificatio
 export function createApp() {
   const app = express()
   app.disable('x-powered-by')
-  if (config.trustProxy) app.set('trust proxy', 1)
+  if (config.trustProxy > 0) app.set('trust proxy', config.trustProxy)
   app.use(helmet({
     contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], imgSrc: ["'self'", 'data:', 'blob:', ...[externalImageOrigin()].filter(Boolean)], styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'], fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'], scriptSrc: ["'self'"], connectSrc: ["'self'"], objectSrc: ["'none'"], frameSrc: ["'self'"], frameAncestors: ["'self'"], workerSrc: ["'self'"] } },
     crossOriginEmbedderPolicy: false,
@@ -92,7 +92,11 @@ export function createApp() {
   // production: serve the built SPA
   const dist = path.join(config.root, 'dist')
   if (fs.existsSync(path.join(dist, 'index.html'))) {
-    app.use(express.static(dist, { index: false, maxAge: '1h' }))
+    app.use(express.static(dist, {
+      index: false, maxAge: '1h',
+      // the service worker and manifest must always be revalidated so a fixed worker reaches users immediately
+      setHeaders: (res, file) => { if (/[\\/](sw\.js|manifest\.webmanifest)$/.test(file)) res.setHeader('Cache-Control', 'no-cache') },
+    }))
     app.get(/^\/(?!api\/|uploads\/).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')))
   }
 

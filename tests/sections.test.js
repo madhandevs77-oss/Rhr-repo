@@ -218,7 +218,7 @@ describe('menu-only print data and PDF', () => {
     const r = await staff.get(`/api/meal-menu/booking/${bk.id}`)
     assert.deepEqual(r.body.meals.map((m) => m.title), [B, D])
     assert.equal(r.body.meals[0].items.length, 3)
-    assert.deepEqual(Object.keys(r.body).sort(), ['date', 'endTime', 'meals', 'section', 'serve', 'startTime'], 'only kitchen facts: no customer, money or notes')
+    assert.deepEqual(Object.keys(r.body).sort(), ['date', 'endTime', 'endsNextDay', 'meals', 'section', 'serve', 'startTime'], 'only kitchen facts: no customer, money or notes')
     assert.equal(r.body.section, 'Mandapam'); assert.deepEqual(r.body.serve, ['Breakfast', 'Dinner'])
   })
   test('Kitchen sheet PDF: hall, date, time, meals, categories and items — anonymous, no amounts', async () => {
@@ -290,9 +290,11 @@ describe('calendar', () => {
     assert.equal(m.sections[0].bookings[0].balance, 16000)
     assert.equal(m.total, 2)
   })
-  test('midnight crossing is rejected consistently (single-day slots)', async () => {
-    const r = await staff.post('/api/bookings', secBody('Outsource 5', { customer: { name: 'T', phone: nextPhone() }, date: futureDate(42), startTime: '22:00', endTime: '01:00' }))
-    assert.equal(r.status, 400)
+  test('regular halls still reject an end time before the start (no midnight crossing)', async () => {
+    for (const hall of ['Mandapam', 'Mini Hall']) {
+      const r = await staff.post('/api/bookings', secBody(hall, { customer: { name: 'T', phone: nextPhone() }, date: futureDate(42), startTime: '22:00', endTime: '01:00' }))
+      assert.equal(r.status, 400, hall)
+    }
   })
 })
 

@@ -7,12 +7,6 @@ import { inr, toPaise } from '../lib/money.js'
 const fonts = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'fonts')
 const money = (n) => inr(toPaise(n))
 const fmtDate = (s) => (s ? new Date(s + (s.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: s.length === 10 ? undefined : 'Asia/Kolkata' }) : '')
-const fmtTime = (t) => {
-  if (!t) return ''
-  const [h, m] = t.split(':')
-  return `${+h % 12 || 12}:${m} ${+h >= 12 ? 'PM' : 'AM'}`
-}
-
 export function renderPdf(snap, { kind = 'invoice' } = {}) {
   const doc = new PDFDocument({ size: 'A4', margin: 40, info: { Title: `${snap.number}`, Author: snap.seller.name } })
   doc.registerFont('R', path.join(fonts, 'FreeSans.ttf'))

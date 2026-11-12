@@ -95,7 +95,7 @@ export async function authenticate(req, _res, next) {
       )
       if (r.rows[0]) {
         req.user = r.rows[0]
-        // sliding expiry, written at most once a minute
+        // NOT a sliding expiry: expires_at is fixed at login (SESSION_HOURS). Only last_seen_at is refreshed here (at most once a minute) for information.
         query(`UPDATE sessions SET last_seen_at=now() WHERE token_hash=$1 AND last_seen_at < now() - interval '1 minute'`, [sha(token)]).catch(() => {})
       }
     }
@@ -114,17 +114,32 @@ export function csrfGuard(req, _res, next) {
   next()
 }
 
-// ---------- tiny in-memory rate limiter (per key) ----------
-export function rateLimiter({ windowMs, max, key = (req) => req.ip, message = 'Too many requests, slow down' }) {
-  const hits = new Map()
-  return (req, _res, next) => {
-    const now = Date.now()
-    const k = key(req)
-    const arr = (hits.get(k) || []).filter((t) => now - t < windowMs)
-    if (arr.length >= max) return next(new AppError(429, 'RATE_LIMITED', message))
-    arr.push(now)
-    hits.set(k, arr)
-    if (hits.size > 5000) for (const [kk, v] of hits) if (!v.length || now - v[v.length - 1] > windowMs) hits.delete(kk)
-    next()
+// ---------- shared rate limiter (PostgreSQL) ----------
+// Counters live in the database so every app instance (e.g. several ECS tasks) shares them. There is deliberately NO in-memory fallback:
+// if the counter cannot be updated the request is refused (503) rather than silently running unlimited.
+export async function consumeRateLimit(key, windowMs, max) {
+  const r = await query(
+    `INSERT INTO rate_limits (key, hits, reset_at) VALUES ($1, 1, now() + $2::int * interval '1 millisecond')
+     ON CONFLICT (key) DO UPDATE SET
+       hits = CASE WHEN rate_limits.reset_at <= now() THEN 1 ELSE rate_limits.hits + 1 END,
+       reset_at = CASE WHEN rate_limits.reset_at <= now() THEN EXCLUDED.reset_at ELSE rate_limits.reset_at END
+     RETURNING hits, GREATEST(1, ceil(extract(epoch FROM (reset_at - now()))))::int AS retry_after`, [key, windowMs])
+  const { hits, retry_after: retryAfter } = r.rows[0]
+  return { allowed: hits <= max, retryAfter }
+}
+export const purgeExpiredRateLimits = () => query(`DELETE FROM rate_limits WHERE reset_at < now() - interval '1 hour'`)
+export const purgeExpiredSessions = () => query('DELETE FROM sessions WHERE expires_at < now()')
+
+/** key(req) returns a string (or nothing to skip). The key is hashed so arbitrary input never becomes a row key. */
+export function rateLimiter({ name, windowMs, max, key = (req) => req.ip, message = 'Too many requests, slow down' }) {
+  return async (req, res, next) => {
+    try {
+      const k = key(req)
+      if (!k) return next()
+      let result
+      try { result = await consumeRateLimit(`${name}:${sha(String(k))}`, windowMs, max) } catch { return next(new AppError(503, 'RATE_LIMIT_UNAVAILABLE', 'Service temporarily unavailable. Try again shortly.')) }
+      if (!result.allowed) { res.set('Retry-After', String(result.retryAfter)); return next(new AppError(429, 'RATE_LIMITED', message)) }
+      next()
+    } catch (e) { next(e) }
   }
 }

@@ -20,7 +20,7 @@ with sync_playwright() as p:
     assert pg.get_by_label('Maintenance charge (₹)').count()==0, 'maintenance should be hidden for outsource'
     pg.get_by_test_id('fulfil-delivery').click(); pg.get_by_test_id('delivery-address').wait_for()
     pg.get_by_label('Customer name *').fill('Out '+tag); pg.get_by_label('Contact number *').fill('9000077'+tag[-3:].zfill(3))
-    pg.get_by_label('Date *').fill(d); pg.get_by_label('Start time *').fill('11:00')
+    pg.get_by_label('Date',exact=True).fill(d); pg.get_by_label('Start time',exact=True).fill('11:00')
     # delivery without an address must be refused
     pg.get_by_role('button',name='Save & confirm booking').click(); pg.wait_for_selector('.form-error'); print('no-address error:', pg.locator('.form-error').inner_text())
     pg.get_by_test_id('delivery-address').fill('12 Gandhi Nagar, Sulur')

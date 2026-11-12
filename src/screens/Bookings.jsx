@@ -27,7 +27,7 @@ export default function Bookings({ nav, hallId: initialHall = '' }) {
 
   const from = `${prefix}-01`
   const to = `${prefix}-${pad(new Date(ym.y, ym.m + 1, 0).getDate())}`
-  const res = useLoad(() => api.get('/api/bookings', { from, to, hallId }), [from, hallId])
+  const res = useLoad(() => api.get('/api/bookings', { from, to, hallId, includeUndated: 1 }), [from, hallId])
 
   const move = (d) => setYm((v) => addMonth(v, d))
   const goToday = () => {
@@ -73,7 +73,7 @@ function List({ bookings, filter, setFilter, open }) {
     return l
   }, [bookings, filter])
   const grouped = filtered.reduce((acc, b) => {
-    ;(acc[b.date] = acc[b.date] || []).push(b)
+    ;(acc[b.date || 'undated'] = acc[b.date || 'undated'] || []).push(b)
     return acc
   }, {})
   return (
@@ -88,7 +88,7 @@ function List({ bookings, filter, setFilter, open }) {
       ) : (
         Object.entries(grouped).map(([date, items]) => (
           <div className="date-group" key={date}>
-            <div className="date-group__header">{fmtDateLong(date)}</div>
+            <div className="date-group__header">{date === 'undated' ? 'Date not set' : fmtDateLong(date)}</div>
             <div className="bookings-list">{items.map((b) => <BookingCard key={b.id} b={b} onOpen={open} />)}</div>
           </div>
         ))

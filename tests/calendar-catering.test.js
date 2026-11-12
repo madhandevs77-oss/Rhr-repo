@@ -39,3 +39,18 @@ describe('calendar shows catering orders', () => {
     assert.equal((await staff.get(`/api/calendar?month=${date.slice(0, 7)}&group=outsource`)).body.days[date], 1)
   })
 })
+
+describe('bulk order advance paid with several methods', () => {
+  test('split advance is stored as one payment with its methods and amounts; mismatching totals are refused', async () => {
+    const date = futureDate(50)
+    const ok = await mk(date, { advance: { amount: 3000, splits: [{ method: 'Cash', amount: 2000 }, { method: 'GPay', amount: 1000 }], reference: 'split', verify: true } })
+    assert.equal(ok.status, 201, JSON.stringify(ok.body))
+    const d = (await staff.get(`/api/catering/${ok.body.order.id}`)).body.order
+    const pay = d.payments.find((p) => p.stage === 'advance')
+    assert.ok(pay, 'advance payment exists')
+    assert.deepEqual(pay.splits.map((s) => [s.method, s.amount]).sort(), [['Cash', 2000], ['GPay', 1000]])
+    assert.equal(pay.amount, 3000)
+    const bad = await mk(futureDate(51), { advance: { amount: 3000, splits: [{ method: 'Cash', amount: 2000 }, { method: 'UPI', amount: 500 }] } })
+    assert.equal(bad.status, 400, 'splits must add up to the amount')
+  })
+})

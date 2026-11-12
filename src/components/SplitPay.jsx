@@ -23,7 +23,7 @@ export function buildSplits(sel, amount) {
   return { splits: methods.map((m) => ({ method: m, amount: parseFloat(sel[m]) })) }
 }
 
-export default function SplitPay({ amount, sel, onChange }) {
+export default function SplitPay({ amount, sel, onChange, methods: choices = SPLIT_METHODS }) {
   const methods = Object.keys(sel)
   const sum = methods.reduce((s, m) => s + (parseFloat(sel[m]) || 0), 0)
   const toggle = (m) => {
@@ -37,7 +37,7 @@ export default function SplitPay({ amount, sel, onChange }) {
   return (
     <fieldset className="splitpay">
       <legend>Payment method(s)</legend>
-      {SPLIT_METHODS.map((m) => (
+      {choices.map((m) => (
         <div className="splitpay__row" key={m}>
           <label className="splitpay__check"><input type="checkbox" checked={m in sel} onChange={() => toggle(m)} /><span>{m}</span></label>
           {m in sel && multi && <input type="number" inputMode="decimal" min="0" step="any" placeholder="₹ amount" aria-label={`${m} amount`} value={sel[m]} onChange={(e) => onChange({ ...sel, [m]: e.target.value })} />}

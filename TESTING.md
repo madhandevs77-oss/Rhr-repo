@@ -5,7 +5,7 @@
 - **Browser end-to-end:** Playwright (Python scripts in `e2e/`) against a running app.
 - **Lint:** ESLint 9 (`eslint.config.js`).
 - **Coverage:** Node's built-in coverage (`--experimental-test-coverage`).
-- **Frontend components:** Vitest + jsdom + React Testing Library (`src/__tests__`, `npm run test:frontend`). Currently 17 tests: money/format helpers, the Login form (validation, error alert, busy state, double-submit block) and shared components. Booking/payment forms and role-based UI are covered only by the Playwright scripts, not by component tests.
+- **Frontend components:** Vitest + jsdom + React Testing Library (`src/__tests__`, `npm run test:frontend`). Currently 31 tests: money/format helpers, the Login form, shared components, the service worker (run in a sandbox with a fake Cache Storage), logout/expiry state clearing, role-based menu and the change-password form. Booking/payment forms and role-based UI are covered only by the Playwright scripts, not by component tests.
 
 ## Prerequisites
 1. Node 22+ and PostgreSQL 14+ running locally.
@@ -38,6 +38,7 @@ python3 e2e/booking-flow.py     # create / clash / edit / cancel / re-book
 python3 e2e/sections-flow.py    # section booking, food picker, split advance, calendar, bill
 python3 e2e/outsource-orders.py # footer tabs, Orders view, Outsource delivery/takeaway
 python3 e2e/catering-drafts.py  # catering menu/prices, orders from the menu, drafts
+python3 e2e/optional-and-split.py  # optional outsource date/time, +3h end, pickup fields, multi-method advance
 python3 e2e/menu-tab.py  e2e/selectall.py  e2e/bill-ui.py  e2e/sweep.py  e2e/mobile-overflow.py
 ```
 The scripts create test records in the database they run against. **Run them only against a development or throw-away database.** Screenshots are written to the session scratch folder set at the top of each script (edit `S=` if you run them elsewhere).
@@ -57,6 +58,12 @@ The scripts create test records in the database they run against. **Run them onl
 | `tests/security.test.js` | session expiry, deactivated users, injection, CORS, headers, data exposure, upload validation |
 | `tests/api-gaps.test.js` | every protected route refuses anonymous callers; previously untested endpoints; report edge cases |
 | `tests/storage-supabase.test.js` | Supabase storage driver incl. failure cleanup |
+| `tests/login-hardening.test.js` | atomic failed-login counting, lockout and expiry, shared DB rate limits, fail-closed, proxy trust |
+| `tests/migrations.test.js` | upgrade of an old database with data, failed/retried migration, tamper refusal, concurrent migrators |
+| `tests/booking-integrity.test.js` | invalid hall/dates/blackout, anonymous refusal, ledger untouched by edit/cancel/restore |
+| `tests/outsource-optional.test.js` | Outsource optional date/time, +3 h end, midnight rollover, overlaps, editing, bill/kitchen/messages |
+| `tests/bulk-advance-splits.test.js` | bulk-order advance with 1–6 methods, rejected splits, DB rows, reports |
+| `tests/calendar-catering.test.js` | catering orders on the calendar |
 | `tests/storage-s3.test.js` | S3 driver against an in-process imitation of S3 (put/get/delete, no-overwrite, failure cleanup) |
 | `tests/deploy-config.test.js` | production start-up refusals (placeholder DB, s3/supabase settings, missing CA file) |
 
@@ -64,3 +71,5 @@ The scripts create test records in the database they run against. **Run them onl
 - `permission denied to create database` – the test user needs `CREATEDB`.
 - Tests hang at start – PostgreSQL is not running or the URL/password is wrong.
 - `Cannot find package …` after `npm ci` on Windows – close editors/terminals that hold files in `node_modules` and try again (see DEPLOYMENT.md troubleshooting).
+
+Note: login attempts are rate limited per IP (30/15 min) and per username (10/15 min). Running the browser scripts repeatedly against one development database can hit that limit; clear it with `DELETE FROM rate_limits;` in the development database.

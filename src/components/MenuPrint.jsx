@@ -36,7 +36,7 @@ function MenuBody({ k, cls, testid }) {
   return (
     <div className={cls} data-testid={testid}>
       <h1 className="menu-print__title">Kitchen Sheet</h1>
-      <p className="menu-print__sub"><strong>{k.section}</strong> · {d}-{mo}-{y} · {k.startTime} – {k.endTime}</p>
+      <p className="menu-print__sub"><strong>{k.section}</strong>{k.date ? ` · ${d}-${mo}-${y}` : ''}{k.startTime ? ` · ${k.startTime} – ${k.endTime}` : ''}</p>
       {k.serve.length > 0 && <p className="menu-print__sub">Serve: {k.serve.join(', ')}</p>}
       {meals.length === 0 && <p className="form-hint" style={{ textAlign: 'center' }}>No menu items selected.</p>}
       {meals.map((m) => (

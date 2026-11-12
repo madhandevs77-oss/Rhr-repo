@@ -11,7 +11,7 @@ import { bookingTotals, settlement } from '../services/pricing.js'
 import { audit, todayIST } from '../services/support.js'
 
 const ctxOf = (req) => ({ user: req.user, ip: req.ip })
-const hhmm = (t) => String(t).slice(0, 5)
+const hhmm = (t) => (t ? String(t).slice(0, 5) : null)
 
 // ================= sections (dashboard cards) =================
 export const sectionsRouter = Router()
@@ -73,7 +73,7 @@ calendarRouter.get('/day', requirePerm('bookings.view'), async (req, res) => {
   const pays = ids.length ? (await query(`SELECT p.*, COALESCE((SELECT json_agg(json_build_object('bucket', a.bucket, 'amount', a.amount)) FROM payment_allocations a WHERE a.payment_id=p.id), '[]') AS allocations FROM payments p WHERE p.booking_id = ANY($1)`, [ids])).rows : []
   const view = (b) => {
     const base = {
-      id: b.id, reference: b.reference, status: b.status, customer: b.c_name, phone: b.c_phone, startTime: hhmm(b.start_time), endTime: hhmm(b.end_time),
+      id: b.id, reference: b.reference, status: b.status, customer: b.c_name, phone: b.c_phone, startTime: hhmm(b.start_time), endTime: hhmm(b.end_time), endsNextDay: !!b.ends_next_day,
       meals: b.meals, notes: b.notes, fulfilment: b.fulfilment || null, deliveryAddress: b.delivery_address || '',
     }
     if (!money) return base
@@ -206,7 +206,7 @@ mealMenuRouter.delete('/items/:id', requirePerm('mealmenu.manage'), async (req, 
 async function kitchenOf(id) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) throw notFound('Booking')
   const r = (await query(
-    `SELECT b.food_items, b.meals, b.event_date, b.start_time, b.end_time, h.name AS hall_name
+    `SELECT b.food_items, b.meals, b.event_date, b.start_time, b.end_time, b.ends_next_day, h.name AS hall_name
      FROM bookings b JOIN halls h ON h.id=b.hall_id WHERE b.id=$1`, [id])).rows[0]
   if (!r) throw notFound('Booking')
   const groups = new Map()
@@ -217,7 +217,7 @@ async function kitchenOf(id) {
   }
   const cap = (m) => m.charAt(0).toUpperCase() + m.slice(1)
   return {
-    section: r.hall_name, date: r.event_date, startTime: hhmm(r.start_time), endTime: hhmm(r.end_time), serve: (r.meals || []).map(cap),
+    section: r.hall_name, date: r.event_date, startTime: hhmm(r.start_time), endTime: hhmm(r.end_time), endsNextDay: !!r.ends_next_day, serve: (r.meals || []).map(cap),
     meals: [...groups.values()].sort((a, b) => a.sort - b.sort || a.title.localeCompare(b.title))
       .map((g) => ({ title: g.title, items: g.items.sort((a, b) => a.sort - b.sort).map((i) => i.name) })).filter((g) => g.items.length),
   }
@@ -237,8 +237,8 @@ mealMenuRouter.get('/booking/:id/pdf', requirePerm('bookings.view'), async (req,
   doc.pipe(res)
   doc.font('B').fontSize(24).fillColor('#111827').text('Kitchen Sheet', { align: 'center' })
   doc.moveDown(0.4)
-  const [y, m, d] = String(k.date).split('-')
-  doc.font('B').fontSize(13).fillColor('#374151').text(`${k.section}  ·  ${d}-${m}-${y}  ·  ${k.startTime} – ${k.endTime}`, { align: 'center' })
+  const [y, m, d] = k.date ? String(k.date).split('-') : []
+  doc.font('B').fontSize(13).fillColor('#374151').text([k.section, ...(k.date ? [`${d}-${m}-${y}`] : []), ...(k.startTime ? [`${k.startTime} – ${k.endTime}${k.endsNextDay ? ' (next day)' : ''}`] : [])].join('  ·  '), { align: 'center' })
   if (k.serve.length) doc.font('R').fontSize(12).fillColor('#6b7280').text(`Serve: ${k.serve.join(', ')}`, { align: 'center' })
   doc.moveDown(1.2)
   const bottom = () => doc.page.height - doc.page.margins.bottom

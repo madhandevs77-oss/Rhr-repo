@@ -6,8 +6,6 @@ import { Messages, ReasonModal } from '../components/DocParts'
 import { useApp, useLoad } from '../store'
 import { addMonth, cap, currentYM, fmt, fmtDate, fmtDateTime, initials, monthKey, monthLabel } from '../utils'
 
-const group = (items) => items.reduce((a, i) => ((a[i.category] = a[i.category] || []).push(i), a), {})
-
 /* ---------------- More menu ---------------- */
 export function More({ nav }) {
   const { can, logout, user } = useApp()

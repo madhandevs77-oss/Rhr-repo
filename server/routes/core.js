@@ -17,7 +17,7 @@ const ctxOf = (req) => ({ user: req.user, ip: req.ip })
 // ================= bookings =================
 export const bookingsRouter = Router()
 const listQuery = z.object({
-  from: isoDate.optional(), to: isoDate.optional(), q: z.string().max(100).optional(), status: z.enum(['tentative', 'confirmed', 'cancelled', 'completed']).optional(),
+  from: isoDate.optional(), to: isoDate.optional(), includeUndated: z.enum(['1', 'true']).optional(), q: z.string().max(100).optional(), status: z.enum(['tentative', 'confirmed', 'cancelled', 'completed']).optional(),
   hallId: uuid.optional(), customerId: uuid.optional(), payment: z.enum(['pending', 'unverified']).optional(),
 })
 

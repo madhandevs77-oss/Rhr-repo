@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api } from '../api'
 import { Async, Empty, MonthSelector } from '../components/common'
 import { useApp, useLoad } from '../store'
-import { addMonth, currentYM, fmt, fmtDateLong, fmtTime, monthKey, monthLabel, pad, todayStr } from '../utils'
+import { addMonth, currentYM, fmt, fmtDateLong, fmtRange, fmtTime, monthKey, monthLabel, pad, todayStr } from '../utils'
 
 const h2 = (h) => (h.kind === 'outsource' ? 1 : 0)
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -70,7 +70,7 @@ export default function Calendar({ nav, hallId: initialHall }) {
                   <div className="cal-sec__title">{s.name}<span>{s.bookings.length || 'free'}</span></div>
                   {s.bookings.map((b) => (
                     <button className={`cal-bk ${b.status === 'cancelled' ? 'is-cancelled' : ''}`} key={b.id} onClick={() => nav.go('detail', { id: b.id })}>
-                      <span className="cal-bk__time">{fmtTime(b.startTime)}–{fmtTime(b.endTime)}</span>
+                      <span className="cal-bk__time">{b.startTime ? fmtRange(b.startTime, b.endTime, b.endsNextDay) : 'Time not set'}</span>
                       <span className="cal-bk__main"><strong>{b.customer}</strong> · {b.phone}</span>
                       <span className="cal-bk__meta"><em className={`tag tag--status-${b.status}`}>{b.status}</em></span>
                       {b.fulfilment && <span className="cal-bk__meta" data-testid="cal-fulfilment"><em className="tag">{b.fulfilment === 'delivery' ? 'Delivery' : 'Takeaway'}</em>{b.fulfilment === 'delivery' && b.deliveryAddress ? ` ${b.deliveryAddress}` : ''}</span>}

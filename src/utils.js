@@ -29,6 +29,8 @@ export const fmtTime = (t) => {
   const hr = parseInt(h, 10)
   return `${hr % 12 || 12}:${m} ${hr >= 12 ? 'PM' : 'AM'}`
 }
+/** "10:00 AM – 1:00 PM", with "(next day)" when the end falls after midnight; "Time not set" when there is no time. */
+export const fmtRange = (start, end, nextDay) => (start ? `${fmtTime(start)} – ${fmtTime(end)}${nextDay ? ' (next day)' : ''}` : 'Time not set')
 export const fmtDateTime = (iso) =>
   new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 
@@ -45,11 +47,6 @@ export const waLink = (phone) => {
   const num = d.length === 10 ? '91' + d : d
   return `https://wa.me/${num}`
 }
-const toMin = (t) => {
-  const [h, m] = t.split(':').map(Number)
-  return h * 60 + m
-}
-
 export const PAY_LABEL = { paid: 'Paid', partial: 'Part paid', unpaid: 'Unpaid', overpaid: 'Overpaid', none: 'No amount' }
 export const fmtMoney = (n) => { const v = num(n); return (v < 0 ? '-₹' : '₹') + Math.abs(v).toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 }) }
 export const cap = (s) => String(s || '').replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase())

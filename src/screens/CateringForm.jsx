@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, errMsg } from '../api'
 import { Async, Field, Icon, useToast } from '../components/common'
 import { ImpactDialog } from '../components/Impact'
+import SplitPay, { buildSplits, initialSplit } from '../components/SplitPay'
 import { EVENT_TYPES, PAY_METHODS } from '../data'
 import { saveDraft } from '../drafts'
 import { useApp, useLoad } from '../store'
@@ -32,7 +33,7 @@ function Form({ nav, editing, categories, prices, bookings, presetBooking, draft
   const mgr = can('catering.priceOverride')
   const postConfirm = editing && ['confirmed', 'preparation', 'ready_for_dispatch', 'delivered', 'exception'].includes(editing.status)
   const preBooking = bookings.find((b) => b.id === presetBooking)
-  const [draftId, setDraftId] = useState(draft?.id || null)
+  const [draftId] = useState(draft?.id || null)
   // dishes ticked on the Menu tab arrive here pre-selected (quantity 1; price from Catering Prices)
   const fromMenu = editing || draft ? [] : categories.flatMap((c) => c.items).filter((i) => picked.includes(i.id)).map((i) => ({ mealItemId: i.id, name: i.name, unit: prices[i.id]?.unit || 'plate', quantity: 1, unitPrice: prices[i.id]?.unitPrice ?? '' }))
   useEffect(() => { if (picked.length) clearPicked() }, [])  
@@ -55,9 +56,13 @@ function Form({ nav, editing, categories, prices, bookings, presetBooking, draft
     staffRequired: editing?.staffRequired || false, staffCount: editing?.staffCount || '', staffCharge: editing?.staffCharge || '', utensilsRequired: editing?.utensilsRequired || false, equipmentNotes: editing?.equipmentNotes || '', equipmentCharge: editing?.equipmentCharge || '',
     setupRequired: editing?.setupRequired || false, setupCharge: editing?.setupCharge || '', deliveryCharge: editing?.deliveryCharge || '', discount: editing?.discount || '', taxRate: editing ? editing.taxRate : settings.finance.defaultTaxRate || 0,
     bookingId: editing?.bookingId || presetBooking || '',
-    advance: '', payMethod: 'Cash', payDate: todayStr(), payRef: '', verifyNow: can('payments.verify'),
+    advance: '', payDate: todayStr(), payRef: '', verifyNow: can('payments.verify'),
     ...(!editing && draft?.data.f ? draft.data.f : {}),
   }))
+  const [sel, setSel] = useState(initialSplit) // payment method(s) for the advance; never saved in drafts
+  // One method: the advance is typed once. Two or more: each method has its own amount and the advance is their automatic total.
+  const multiPay = Object.keys(sel).length > 1
+  const advanceAmt = multiPay ? r2(Object.values(sel).reduce((s, v) => s + (parseFloat(v) > 0 ? parseFloat(v) : 0), 0)) : num(f.advance)
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
   useEffect(() => { if (!f.serviceOptionId) { const first = options.find((o) => o.active); if (first) setF((s) => ({ ...s, serviceOptionId: first.id })) } }, [options, f.serviceOptionId])
   const opt = options.find((o) => o.id === f.serviceOptionId)
@@ -89,8 +94,10 @@ function Form({ nav, editing, categories, prices, bookings, presetBooking, draft
     }
     if (f.staffRequired && !(parseInt(f.staffCount, 10) > 0)) return 'Enter how many serving staff are needed'
     if (num(f.discount) > food + svc) return 'Discount cannot exceed the subtotal'
-    if (!editing && num(f.advance) > total) return 'Advance cannot exceed the total'
+    if (!editing && !multiPay && num(f.advance) < 0) return 'Advance cannot be negative'
+    if (!editing && advanceAmt > total) return 'Advance cannot exceed the total'
     if (f.contactPhone && !isPhone(f.contactPhone)) return 'Contact phone must be 10 digits'
+    if (!editing && (multiPay || advanceAmt > 0)) { const sp = buildSplits(sel, advanceAmt); if (sp.error) return sp.error }
     return ''
   }
 
@@ -98,7 +105,7 @@ function Form({ nav, editing, categories, prices, bookings, presetBooking, draft
     serviceOptionId: f.serviceOptionId,
     customer: { name: f.name.trim(), phone: digits(f.phone), email: f.email.trim() || undefined, address: f.address.trim(), language: f.language, messageConsent: f.consent, billingName: f.billingName.trim() || undefined, billingAddress: f.billingAddress.trim() || undefined, billingTaxId: f.billingTaxId.trim() || undefined },
     bookingId: f.bookingId || null, eventType: f.eventType, date: f.date, deliveryTime: f.deliveryTime || undefined, servingTime: f.servingTime || undefined,
-    venueName: f.venueName.trim(), deliveryAddress: f.deliveryAddress.trim(), fulfilmentMethod: f.fulfilmentMethod, contactPerson: f.contactPerson.trim(), contactPhone: digits(f.contactPhone) || undefined,
+    venueName: f.fulfilmentMethod === 'delivery' ? f.venueName.trim() : '', deliveryAddress: f.fulfilmentMethod === 'delivery' ? f.deliveryAddress.trim() : '', fulfilmentMethod: f.fulfilmentMethod, contactPerson: f.contactPerson.trim(), contactPhone: digits(f.contactPhone) || undefined,
     plates: parseInt(f.plates, 10), mealCategory: f.mealCategory, pricingMode: f.pricingMode, pricePerPlate: f.pricingMode === 'per_plate' ? num(f.pricePerPlate) : 0,
     items: f.items.map((i) => ({ mealItemId: i.mealItemId || undefined, menuItemId: i.mealItemId ? undefined : i.menuItemId || undefined, name: i.mealItemId || i.menuItemId ? undefined : i.name.trim(), unit: i.unit, quantity: num(i.quantity), unitPrice: f.pricingMode === 'per_plate' && (i.mealItemId || i.menuItemId) ? undefined : num(i.unitPrice) })),
     draftId: draftId || undefined,
@@ -128,7 +135,7 @@ function Form({ nav, editing, categories, prices, bookings, presetBooking, draft
         setImpact(null); toast('Order updated'); nav.back()
       } else {
         const payload = body()
-        if (num(f.advance) > 0) payload.advance = { amount: num(f.advance), method: f.payMethod, paidOn: f.payDate, reference: f.payRef.trim(), verify: can('payments.verify') ? f.verifyNow : false, idempotencyKey: crypto.randomUUID() }
+        if (advanceAmt > 0) payload.advance = { amount: advanceAmt, splits: buildSplits(sel, advanceAmt).splits, paidOn: f.payDate, reference: f.payRef.trim(), verify: can('payments.verify') ? f.verifyNow : false, idempotencyKey: crypto.randomUUID() }
         const r = await api.post('/api/catering', payload)
         toast('Order created'); nav.replace('cDetail', { id: r.order.id })
       }
@@ -184,8 +191,12 @@ function Form({ nav, editing, categories, prices, bookings, presetBooking, draft
             <Field label="Serving time"><input type="time" value={f.servingTime} onChange={set('servingTime')} /></Field>
           </div>
           <Field label="Fulfilment"><select value={f.fulfilmentMethod} onChange={set('fulfilmentMethod')}><option value="delivery">Delivery to venue</option><option value="pickup">Customer pickup</option></select></Field>
-          <Field label="Venue name"><input value={f.venueName} onChange={set('venueName')} /></Field>
-          <Field label="Delivery address"><textarea rows={2} value={f.deliveryAddress} onChange={set('deliveryAddress')} /></Field>
+          {f.fulfilmentMethod === 'delivery' && (
+            <>
+              <Field label="Venue name"><input value={f.venueName} onChange={set('venueName')} data-testid="venue-name" /></Field>
+              <Field label="Delivery address"><textarea rows={2} value={f.deliveryAddress} onChange={set('deliveryAddress')} data-testid="delivery-address" /></Field>
+            </>
+          )}
           <div className="form-row">
             <Field label="On-site contact"><input value={f.contactPerson} onChange={set('contactPerson')} /></Field>
             <Field label="Contact phone"><input type="tel" inputMode="numeric" maxLength={10} value={f.contactPhone} onChange={set('contactPhone')} /></Field>
@@ -235,10 +246,13 @@ function Form({ nav, editing, categories, prices, bookings, presetBooking, draft
           </div>
           {!editing && (
             <>
-              <Field label="Advance received (₹)" hint={can('payments.verify') ? '' : 'Recorded as awaiting verification until a manager confirms receipt.'}><input type="number" min={0} step="any" value={f.advance} onChange={set('advance')} /></Field>
-              {num(f.advance) > 0 && (
+              <SplitPay amount={advanceAmt} sel={sel} onChange={setSel} methods={PAY_METHODS} />
+              <Field label="Advance received (₹)" hint={multiPay ? 'Total of the method amounts above (calculated automatically)' : can('payments.verify') ? '' : 'Recorded as awaiting verification until a manager confirms receipt.'}>
+                <input type="number" min={0} step="any" value={multiPay ? advanceAmt : f.advance} readOnly={multiPay} onChange={set('advance')} data-testid="advance-total" />
+              </Field>
+              {advanceAmt > 0 && (
                 <>
-                  <div className="form-row"><Field label="Method"><select value={f.payMethod} onChange={set('payMethod')}>{PAY_METHODS.map((m) => <option key={m}>{m}</option>)}</select></Field><Field label="Date"><input type="date" value={f.payDate} max={todayStr()} onChange={set('payDate')} /></Field></div>
+                  <div className="form-row"><Field label="Date"><input type="date" value={f.payDate} max={todayStr()} onChange={set('payDate')} /></Field></div>
                   <Field label="Reference"><input value={f.payRef} onChange={set('payRef')} /></Field>
                   {can('payments.verify') && <label className="consent"><input type="checkbox" checked={f.verifyNow} onChange={set('verifyNow')} /><span>I have confirmed the money was received (verify now).</span></label>}
                 </>

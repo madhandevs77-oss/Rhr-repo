@@ -4,7 +4,7 @@ import { Async, Field, Icon, Modal, AsyncButton, useToast } from '../components/
 import { Invoices, Messages, MoneySummary, Payments, Row, Section, useSections } from '../components/DocParts'
 import MenuPrint from '../components/MenuPrint'
 import { useApp, useLoad } from '../store'
-import { cap, fmt, fmtDate, fmtDateLong, fmtDateTime, fmtTime, PAY_LABEL, todayStr, waLink } from '../utils'
+import { cap, fmt, fmtDate, fmtDateLong, fmtDateTime, fmtRange, PAY_LABEL, todayStr, waLink } from '../utils'
 
 export default function BookingDetail({ nav, id }) {
   const res = useLoad(() => api.get(`/api/bookings/${id}`), [id])
@@ -48,8 +48,8 @@ function Detail({ nav, b, reload }) {
 
       <Section title="Booking Details" open={open.details} onToggle={() => toggle('details')}>
         <Row l="Event Type" v={b.eventType} />
-        <Row l="Date" v={fmtDateLong(b.date)} />
-        <Row l="Time" v={`${fmtTime(b.startTime)} - ${fmtTime(b.endTime)}`} />
+        <Row l="Date" v={b.date ? fmtDateLong(b.date) : 'Not set'} />
+        <Row l="Time" v={b.startTime ? fmtRange(b.startTime, b.endTime, b.endsNextDay) : 'Not set'} />
         <Row l="Hall" v={b.hallName} />
         {b.fulfilment && <Row l="Service" v={b.fulfilment === 'delivery' ? 'Delivery' : 'Takeaway'} />}
         {b.fulfilment === 'delivery' && <Row l="Delivery address" v={b.deliveryAddress} />}
@@ -144,7 +144,7 @@ function CancelModal({ b, onClose, onDone }) {
   }
   return (
     <Modal title="Cancel booking?" small onClose={onClose} footer={<><button className="btn btn--secondary" onClick={onClose}>Keep booking</button><button className="btn btn--danger" disabled={busy || reason.trim().length < 3} onClick={submit}>Cancel booking</button></>}>
-      <p className="modal__desc">This frees {b.hallName} on {fmtDate(b.date)}. The booking, payments and history stay on record.{hasMoney ? ` ${fmt(b.money.paid)} has been received — any refund must be recorded separately under Payments.` : ''}{b.invoices.some((i) => i.status === 'issued') ? ' The current invoice will be marked void.' : ''}</p>
+      <p className="modal__desc">This frees {b.hallName}{b.date ? ` on ${fmtDate(b.date)}` : ''}. The booking, payments and history stay on record.{hasMoney ? ` ${fmt(b.money.paid)} has been received — any refund must be recorded separately under Payments.` : ''}{b.invoices.some((i) => i.status === 'issued') ? ' The current invoice will be marked void.' : ''}</p>
       <Field label="Reason *"><input value={reason} onChange={(e) => setReason(e.target.value)} autoFocus /></Field>
       {err && <div className="form-error" role="alert">{err}</div>}
     </Modal>

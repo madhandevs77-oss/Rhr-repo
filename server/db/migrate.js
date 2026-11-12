@@ -10,17 +10,17 @@ const sha = (s) => crypto.createHash('sha256').update(s).digest('hex')
  * Forward-only, checksummed migrations. Each file runs in its own transaction.
  * An already-applied file whose content changed is refused (prevents silent schema drift).
  */
-export async function migrate(pool, { log = () => {} } = {}) {
+export async function migrate(pool, { log = () => {}, dir: migrationsDir = dir } = {}) {
   const client = await pool.connect()
   try {
     await client.query('SELECT pg_advisory_lock(727274)') // one migrator at a time
     await client.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
       name text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`)
     const applied = new Map((await client.query('SELECT name, checksum FROM schema_migrations')).rows.map((r) => [r.name, r.checksum]))
-    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
+    const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort()
     const ran = []
     for (const f of files) {
-      const sql = fs.readFileSync(path.join(dir, f), 'utf8')
+      const sql = fs.readFileSync(path.join(migrationsDir, f), 'utf8')
       const sum = sha(sql)
       if (applied.has(f)) {
         if (applied.get(f) !== sum) throw new Error(`Migration ${f} was modified after being applied. Add a new migration instead.`)

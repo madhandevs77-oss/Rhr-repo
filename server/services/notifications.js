@@ -8,7 +8,7 @@ import { renderPdf } from './pdf.js'
 import { audit, getSetting } from './support.js'
 
 export const BACKOFF_SEC = [30, 120, 600, 3600, 21600]
-const fmtDate = (s) => new Date(s + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+const fmtDate = (s) => (s ? new Date(s + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '')
 export const fmtTime12 = (t) => {
   if (!t) return ''
   const [h, m] = t.split(':')
@@ -27,13 +27,14 @@ const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 export const emailHtml = (text) => `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#111827;max-width:560px">${esc(text).replace(/\n/g, '<br>')}</div>`
 
 export function render(template, vars) {
-  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => (vars[k] === undefined || vars[k] === null ? '' : String(vars[k])))
+  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => (vars[k] === undefined || vars[k] === null ? '' : String(vars[k]))).replace(/[ \t]+-[ \t]*$/gm, '') // a line left ending in " -" (no end time) is tidied
 }
 
 export function bookingVars(row, customer, st, business) {
   return {
     customer_name: customer.name, booking_reference: row.reference, hall_name: row.hall_name, event_type: row.event_type,
-    event_date: fmtDate(row.event_date), start_time: fmtTime12(row.start_time), end_time: fmtTime12(row.end_time),
+    event_date: row.event_date ? fmtDate(row.event_date) : 'To be confirmed', start_time: row.start_time ? fmtTime12(row.start_time) : 'To be confirmed',
+    end_time: row.end_time ? fmtTime12(row.end_time) + (row.ends_next_day ? ' (next day)' : '') : '',
     total_amount: inr(st.totals.total), advance_amount: inr(st.settle.paidTotal), remaining_balance: inr(Math.max(0, st.settle.balance)),
     restaurant_phone: business.phone || '',
   }
@@ -217,7 +218,7 @@ export async function enqueueThanks(db, ctx, kind, id, { auto = true, channels }
     if (auto) return []
     throw conflict(kind === 'booking' ? 'A thank-you can only be sent for a confirmed booking.' : 'A thank-you can only be sent once the order is delivered.', 'BAD_STATE')
   }
-  if (!auto && kind === 'booking' && String(row.event_date).slice(0, 10) > todayIST()) throw conflict('The event has not taken place yet.', 'TOO_EARLY')
+  if (!auto && kind === 'booking' && row.event_date && String(row.event_date).slice(0, 10) > todayIST()) throw conflict('The event has not taken place yet.', 'TOO_EARLY')
   if (channels?.includes('email') && !customer.email) throw conflict('This customer has no email address on file.', 'NO_EMAIL')
   const biz = await getSetting(db, 'business')
   const out = []
@@ -248,7 +249,7 @@ export async function scanThankYous() {
   const due = await query(
     `SELECT b.id FROM bookings b
       WHERE b.status IN ('confirmed','completed')
-        AND (b.event_date + b.end_time) <= ((now() AT TIME ZONE 'Asia/Kolkata') - make_interval(hours => $1))
+        AND b.ends_at <= ((now() AT TIME ZONE 'Asia/Kolkata') - make_interval(hours => $1))
         AND b.event_date >= ((now() AT TIME ZONE 'Asia/Kolkata')::date - 3)
         AND NOT EXISTS (SELECT 1 FROM notification_events e WHERE e.booking_id=b.id AND e.type='thank_you')
       ORDER BY b.event_date LIMIT 50`,

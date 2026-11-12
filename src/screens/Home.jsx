@@ -186,7 +186,7 @@ function SectionGroup({ title, testid, sections, nav, calendarLink, photos, setG
               <span className={`sec-card__status ${s.todayStatus}`}>{s.todayStatus === 'booked' ? `Booked today (${s.today.length})` : 'Free today'}</span>
             </div>
             <div className="sec-card__body">
-              {s.today.map((b) => <div key={b.id} className="sec-card__line">{b.startTime}–{b.endTime} · {b.customer}</div>)}
+              {s.today.map((b) => <div key={b.id} className="sec-card__line">{b.startTime ? `${b.startTime}–${b.endTime}` : 'Time not set'} · {b.customer}</div>)}
               <div className="sec-card__line sec-card__line--mute">{s.upcomingCount ? `${s.upcomingCount} upcoming` : 'No upcoming bookings'}{s.next ? ` · next ${s.next.date}` : ''}</div>
             </div>
             <div className="sec-card__actions">

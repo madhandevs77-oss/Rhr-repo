@@ -1,36 +1,47 @@
 import { Router } from 'express'
 import { query } from '../db/pool.js'
 import { checkPasswordStrength, clearCookie, createSession, destroySession, hashPassword, permissionsFor, rateLimiter, requireAuth, requirePerm, sessionToken, setCookie, verifyPassword } from '../lib/auth.js'
-import { badRequest, conflict, notFound } from '../lib/errors.js'
+import { AppError, badRequest, conflict, notFound } from '../lib/errors.js'
 import { parse, z } from '../lib/validate.js'
 import { audit } from '../services/support.js'
 
 export const authRouter = Router()
 const ctxOf = (req) => ({ user: req.user, ip: req.ip })
-const loginLimiter = rateLimiter({ windowMs: 15 * 60 * 1000, max: 30, message: 'Too many sign-in attempts. Try again later.' })
+const TOO_MANY = 'Too many sign-in attempts. Try again later.'
+// Two shared (database-backed) limits: per client IP, and per normalised username (applies equally to names that do not exist, so it reveals nothing).
+const ipLimiter = rateLimiter({ name: 'login-ip', windowMs: 15 * 60 * 1000, max: 30, message: TOO_MANY })
+const userLimiter = rateLimiter({ name: 'login-user', windowMs: 15 * 60 * 1000, max: 10, message: TOO_MANY, key: (req) => (typeof req.body?.username === 'string' ? req.body.username.trim().toLowerCase().slice(0, 100) : '') })
 const LOCK_AFTER = 5
 const LOCK_MINUTES = 15
+const DUMMY_HASH = 'scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$' + Buffer.alloc(64).toString('base64')
 
 export const userView = (u) => ({ id: u.id, username: u.username, name: u.name, role: u.role, permissions: permissionsFor(u) })
 
-authRouter.post('/login', loginLimiter, async (req, res) => {
+authRouter.post('/login', ipLimiter, userLimiter, async (req, res) => {
   const { username, password } = parse(z.object({ username: z.string().min(1).max(100), password: z.string().min(1).max(200) }), req.body)
   const r = await query('SELECT * FROM users WHERE lower(username)=lower($1)', [username])
   const u = r.rows[0]
   const generic = badRequest('Invalid username or password', undefined, 'BAD_CREDENTIALS')
   generic.status = 401
   if (!u || !u.active) {
-    await verifyPassword(password, 'scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$' + Buffer.alloc(64).toString('base64')).catch(() => {}) // equalise timing
+    await verifyPassword(password, DUMMY_HASH).catch(() => {}) // equalise timing
     throw generic
   }
-  if (u.locked_until && new Date(u.locked_until) > new Date()) {
-    const e = badRequest('Account temporarily locked after repeated failures. Try again later.', undefined, 'LOCKED')
-    e.status = 429
-    throw e
+  // Reserve one attempt atomically BEFORE checking the password: concurrent requests cannot overwrite each other's count, and no more than
+  // LOCK_AFTER guesses can be in flight. An expired lock restarts the count at 1. A correct password resets everything below.
+  const attempt = await query(
+    // the new count is computed INSIDE the UPDATE from the current row (not from a value read earlier), so concurrent attempts serialise on the row lock
+    `UPDATE users SET
+       failed_logins = CASE WHEN locked_until IS NOT NULL AND locked_until <= now() THEN 1 ELSE failed_logins + 1 END,
+       locked_until  = CASE WHEN (CASE WHEN locked_until IS NOT NULL AND locked_until <= now() THEN 1 ELSE failed_logins + 1 END) >= $2::int
+                            THEN now() + make_interval(mins => $3::int) ELSE NULL END
+     WHERE id=$1 AND active AND (locked_until IS NULL OR locked_until <= now()) RETURNING failed_logins`,
+    [u.id, LOCK_AFTER, LOCK_MINUTES])
+  if (!attempt.rowCount) {
+    await verifyPassword(password, DUMMY_HASH).catch(() => {}) // locked accounts take as long as any other and answer like the rate limiter
+    throw new AppError(429, 'RATE_LIMITED', TOO_MANY)
   }
   if (!(await verifyPassword(password, u.password_hash))) {
-    const failed = u.failed_logins + 1
-    await query('UPDATE users SET failed_logins=$2::int, locked_until = CASE WHEN $2::int >= $3::int THEN now() + ($4 || \' minutes\')::interval ELSE NULL END WHERE id=$1', [u.id, failed, LOCK_AFTER, String(LOCK_MINUTES)])
     await audit({ query }, { ip: req.ip, system: true }, { action: 'Login Failed', entityType: 'user', entityId: u.id, summary: `Failed sign-in for ${u.username}` })
     throw generic
   }

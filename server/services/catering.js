@@ -1,6 +1,6 @@
 // Bulk food outsourcing / catering orders. Independent of hall bookings (optional link). Payment status
 // and fulfilment status are separate: being fully paid never completes an order.
-import { methodEnum } from '../lib/splits.js'
+import { methodEnum, splitsIn } from '../lib/splits.js'
 import { can } from '../lib/auth.js'
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js'
 import { fromPaise, inr, toPaise } from '../lib/money.js'
@@ -80,7 +80,7 @@ const orderBase = z.object({
   taxRate: z.coerce.number().min(0).max(100).optional(),
   items: z.array(itemIn).max(200).default([]),
 })
-export const orderCreateSchema = orderBase.extend({ advance: z.object({ amount: money, method: methodEnum.default('Cash'), paidOn: isoDate.optional(), reference: z.string().max(100).default(''), notes: z.string().max(300).default(''), idempotencyKey: z.string().max(100).optional(), verify: z.boolean().optional() }).optional() })
+export const orderCreateSchema = orderBase.extend({ advance: z.object({ amount: money, method: methodEnum.default('Cash'), splits: splitsIn, paidOn: isoDate.optional(), reference: z.string().max(100).default(''), notes: z.string().max(300).default(''), idempotencyKey: z.string().max(100).optional(), verify: z.boolean().optional() }).optional() })
 export const orderUpdateSchema = orderBase.extend({
   expectedVersion: z.coerce.number().int().min(1),
   confirm: z.object({ financial: z.boolean().optional(), invoice: z.boolean().optional() }).default({}),

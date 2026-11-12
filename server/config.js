@@ -27,7 +27,9 @@ export const config = {
   // sessions / cookies
   sessionHours: int(env.SESSION_HOURS, 12),
   cookieSecure: bool(env.COOKIE_SECURE, env.NODE_ENV === 'production'),
-  trustProxy: bool(env.TRUST_PROXY, !!env.RENDER), // Render always sits behind its own proxy
+  // Number of trusted proxy hops in front of the app: 0 = none (client IP = socket address), 1 = one load balancer (ALB, Render).
+  // TRUST_PROXY=true means 1; a number sets the hop count (e.g. 2 for CloudFront -> ALB). Only that many right-hand X-Forwarded-For entries are trusted.
+  trustProxy: (() => { const v = env.TRUST_PROXY; if (v === undefined || v === '') return env.RENDER ? 1 : 0; if (/^\d+$/.test(v)) return parseInt(v, 10); return bool(v) ? 1 : 0 })(),
 
   // hall photo storage: 'local' (disk; development / Docker volume), 'supabase' (Supabase Storage) or 's3' (Amazon S3; credentials come from the AWS default chain / IAM role)
   storageDriver: (env.STORAGE_DRIVER || 'local').toLowerCase(),
@@ -96,6 +98,7 @@ if (config.isProd) {
   if (!env.DATABASE_URL) fatal('DATABASE_URL must be set in production.')
   if (/rhr_dev_pw|CHANGE_ME/.test(env.DATABASE_URL)) fatal('DATABASE_URL still contains a development/placeholder password.')
   if (!config.cookieSecure) console.warn('WARNING: COOKIE_SECURE is off in production. Sessions cookies will be sent over plain HTTP.')
+  if (config.trustProxy === 0) console.warn('WARNING: TRUST_PROXY is not set. Behind a load balancer (AWS ALB, Render) every visitor would share the balancer\'s IP for login rate limits. Set TRUST_PROXY=1 (number of proxy hops) when a proxy is in front.')
 }
 if (!['local', 'supabase', 's3'].includes(config.storageDriver)) fatal(`STORAGE_DRIVER must be "local", "supabase" or "s3" (got "${config.storageDriver}").`)
 if (config.storageDriver === 's3' && (!config.s3.bucket || !config.s3.region)) fatal('STORAGE_DRIVER=s3 needs S3_BUCKET and AWS_REGION.')

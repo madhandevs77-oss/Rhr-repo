@@ -177,7 +177,6 @@ describe('final invoice', () => {
 })
 
 describe('booking confirmation messages', () => {
-  const sent = () => mock.outbox.filter((m) => m.type !== undefined || true)
   test('NOT sent on booking creation or on a pending payment; sent once after verified advance; never duplicated', async () => {
     await runWorker(); mock.reset()
     const b = await newBooking({ customer: { name: 'Lakshmi', phone: '9000012345', messageConsent: true } })

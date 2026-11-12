@@ -131,7 +131,7 @@ Plain values (environment) and secrets (Secrets Manager → injected). The full 
 | `DB_POOL_MAX` | `10` | no |
 | `STORAGE_DRIVER` | `s3` | no |
 | `S3_BUCKET`, `AWS_REGION` | bucket name, region | no |
-| `TRUST_PROXY` | `true` (behind the load balancer; otherwise rate limits/lockouts see one IP) | no |
+| `TRUST_PROXY` | `1` = one proxy hop (the ALB). Use `2` if CloudFront sits in front of the ALB. Only that many right-hand `X-Forwarded-For` entries are trusted, so clients cannot spoof their IP. If unset, every visitor appears to come from the load balancer and shares one login rate limit | no |
 | `COOKIE_SECURE` | `true` | no |
 | `ADMIN_USERNAME` | first admin's username | no |
 | `ADMIN_PASSWORD` | first admin's password | **yes** (remove after first login) |
@@ -146,6 +146,8 @@ Migrations are applied automatically on every start (advisory-locked, so two tas
 
 Manual run from a machine that can reach the database (e.g. a one-off ECS task using the same image and secrets):
 `node server/scripts/migrate.js`. **Always take a snapshot first** (§14): migrations are forward-only.
+
+**Login rate limits and multiple tasks.** Login limits (30 attempts / 15 min per IP, 10 / 15 min per username) and the per-account lockout (5 failures, 15 min) are stored in the same RDS database (`rate_limits`, `users`), so they hold across any number of ECS tasks without Redis. There is no in-memory fallback: if the database cannot be reached, login returns 503 instead of running unlimited. Expired sessions and old limiter rows are purged hourly by each task.
 
 ## 10. Initial admin
 
@@ -208,7 +210,7 @@ Prices change — use the AWS Pricing Calculator for your region and check the c
 | Upload fails with `S3 upload failed (AccessDenied)` | Task role missing the S3 policy, or policy bucket name wrong |
 | Images 404 but upload worked | Different bucket/region configured than the one uploaded to; object key under `halls/` missing |
 | Health check failing, task replaced repeatedly | Health path must be `/healthz`, port `3001`; start-up (DB wait + migrations) can take ~30 s — give a grace period |
-| Everyone gets "too many attempts" | `TRUST_PROXY` not `true` |
+| Everyone gets "too many attempts" | `TRUST_PROXY` not set to `1` (hop count) |
 | Logged out immediately | `COOKIE_SECURE=true` over plain HTTP; use the HTTPS URL |
 | `ResourceInitializationError` pulling secrets/image | Execution role lacks ECR/Secrets Manager permissions, or the task has no route to the internet/VPC endpoints |
 | No e-mails | SMTP not configured (test mode); AWS blocks outbound port 25 by default — use 587 or Amazon SES **[verify]** |

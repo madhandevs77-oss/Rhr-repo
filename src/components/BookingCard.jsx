@@ -1,4 +1,4 @@
-import { fmtDate, fmtTime, initials, PAY_LABEL } from '../utils'
+import { fmtDate, fmtRange, initials, PAY_LABEL } from '../utils'
 
 export default function BookingCard({ b, onOpen, showPay = true }) {
   const cancelled = b.status === 'cancelled'
@@ -9,8 +9,8 @@ export default function BookingCard({ b, onOpen, showPay = true }) {
       <div className="booking-card__info">
         <div className="booking-card__name">{b.customer.name}</div>
         <div className="booking-card__meta">
-          <span>{fmtDate(b.date)}</span>
-          <span>{fmtTime(b.startTime)}–{fmtTime(b.endTime)}</span>
+          <span>{b.date ? fmtDate(b.date) : 'Date not set'}</span>
+          <span>{fmtRange(b.startTime, b.endTime, b.endsNextDay)}</span>
           <span>{b.hallName}</span>
         </div>
         <div className="booking-card__tags">

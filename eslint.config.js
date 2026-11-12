@@ -14,6 +14,7 @@ export default [
     settings: { react: { version: '18' } },
     rules: { 'react/jsx-uses-vars': 'error', 'react/jsx-uses-react': 'off', 'react-hooks/rules-of-hooks': 'error' },
   },
+  { files: ['src/__tests__/**'], languageOptions: { globals: { ...globals.browser, ...globals.node } } },
   { files: ['public/sw.js'], languageOptions: { globals: globals.serviceworker } },
   { rules: { 'no-unused-vars': ['warn', { argsIgnorePattern: '^_', ignoreRestSiblings: true, varsIgnorePattern: '^_|^React$', caughtErrors: 'none' }], 'no-empty': ['error', { allowEmptyCatch: true }] } },
 ]

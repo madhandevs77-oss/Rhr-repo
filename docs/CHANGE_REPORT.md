@@ -117,3 +117,9 @@ zod 4 + `npm audit fix` (0 vulnerabilities), `.gitignore`, ESLint (`npm run lint
 ## Round 9 – AWS readiness
 S3 storage driver; RDS CA/TLS config; production config validation; Vitest frontend tests; `fmt` NaN fix; zod/vitest upgrades; CI frontend + Docker build; `.dockerignore`; `AWS_DEPLOYMENT.md`.
 - Calendar now includes catering orders (day dot, day list with time/plates/delivery address, opens the order); new test file tests/calendar-catering.test.js; catering form: message when no service type is switched on, price-per-plate initial value fixed.
+
+## Round 10 – security audit
+Service worker no longer caches private data (+ cleanup of old caches, `no-cache` for `sw.js`); atomic failed-login counting; shared PostgreSQL rate limits (migration 013) with per-IP and per-username limits and fail-closed behaviour; `TRUST_PROXY` hop count; logout/expiry clears all account state; housekeeping of expired sessions/limiter rows; FK indexes (migration 014); dead code removed (lint clean); migration runner accepts a directory (tests); new tests: login-hardening, migrations, booking-integrity, SW, logout, roles/forms.
+
+## Round 11
+Outsource date/time optional with automatic +3 h end and next-day rollover (migration 015); bulk-order advance with several payment methods (SplitPay, server validation of splits); pickup hides venue/address; undated bookings listed under "Date not set"; null-safe date/time in PDFs, kitchen sheet and messages.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { api, errMsg } from '../api'
 import { Async, Field, useToast } from '../components/common'
 import { ImpactDialog } from '../components/Impact'
@@ -11,7 +11,8 @@ import { MenuPicker } from './MealMenu'
 const num = (v) => parseFloat(v) || 0
 const r2 = (n) => Math.round(n * 100) / 100
 const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m }
-const plus3h = (t) => { if (!t) return ''; const m = toMin(t) + 180; return m >= 1440 ? '23:59' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}` }
+// start + exactly 3 hours; past midnight it wraps to the next day (22:30 -> 01:30, shown as "next day")
+const plus3h = (t) => { if (!t) return ''; const m = (toMin(t) + 180) % 1440; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}` }
 
 export default function SectionBooking({ nav, editing, hallId, draft }) {
   const menu = useLoad(() => api.get('/api/meal-menu'), [])
@@ -28,12 +29,11 @@ function Form({ nav, editing, hallId, categories, draft }) {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [impact, setImpact] = useState(null)
-  const [draftId, setDraftId] = useState(draft?.id || null)
-  const [endTouched, setEndTouched] = useState(!!editing || !!draft?.data.endTouched)
+  const [draftId] = useState(draft?.id || null)
   const [f, setF] = useState(() => ({
     hallId: editing?.hallId || hallId || '',
     name: editing?.customer.name || '', phone: editing?.customer.phone || '', altPhone: editing?.customer.altPhone || '', email: editing?.customer.email || '',
-    date: editing?.date || todayStr(), startTime: editing?.startTime || '', endTime: editing?.endTime || '', notes: editing?.notes || '',
+    date: editing ? editing.date || '' : halls.find((h) => h.id === hallId)?.kind === 'outsource' ? '' : todayStr(), startTime: editing?.startTime || '', endTime: editing?.endTime || '', notes: editing?.notes || '',
     hallCharge: editing ? editing.hallCharge : '', extraAmount: editing?.extraAmount || '', removeTax: false, charges: editing?.charges.map((c) => ({ description: c.description, amount: c.quantity * c.unitPrice })) || [],
     fulfilment: editing?.fulfilment || 'takeaway', deliveryAddress: editing?.deliveryAddress || '',
     foodAmount: editing?.foodAmount || '', discount: editing?.discount || '', foodConfirmed: editing ? editing.foodStatus === 'confirmed' : false,
@@ -48,11 +48,12 @@ function Form({ nav, editing, hallId, categories, draft }) {
   const out = !!hall && isOut(hall) // Outsource sections: delivery or takeaway instead of the hall details
   const sh = out ? 1 : 0 // shifts the step numbers when the delivery card is shown
 
-  useEffect(() => { if (!endTouched && f.startTime) setF((s) => ({ ...s, endTime: plus3h(s.startTime) })) }, [f.startTime, endTouched])
+  // Choosing a start time always sets the end time to start + 3 hours (the standard slot); the end time can still be adjusted afterwards.
+  const setStart = (e) => { const v = e.target.value; setF((s) => ({ ...s, startTime: v, endTime: v ? plus3h(v) : '' })) }
 
   const day = useLoad(() => (f.hallId && f.date ? api.get('/api/bookings', { from: f.date, to: f.date, hallId: f.hallId }) : Promise.resolve({ bookings: [] })), [f.hallId, f.date])
   const clash = useMemo(() => {
-    if (!f.startTime || !f.endTime || f.endTime <= f.startTime) return null
+    if (!f.date || !f.startTime || !f.endTime || f.endTime <= f.startTime) return null // a next-day end (outsource) is checked by the server
     return (day.data?.bookings || []).find((b) => b.id !== editing?.id && b.status !== 'cancelled' && toMin(f.startTime) < toMin(b.endTime) && toMin(b.startTime) < toMin(f.endTime)) || null
   }, [day.data, f.startTime, f.endTime, editing])
 
@@ -75,10 +76,12 @@ function Form({ nav, editing, hallId, categories, draft }) {
     if (!isPhone(f.phone)) return 'Enter a valid 10-digit contact number'
     if (f.altPhone && !isPhone(f.altPhone)) return 'Alternate phone must be 10 digits (or leave it empty)'
     if (f.email && !/^\S+@\S+\.\S+$/.test(f.email)) return 'Enter a valid email or leave it empty'
-    if (!f.date) return 'Select the date'
-    if (!editing && f.date < todayStr()) return 'Date cannot be in the past'
-    if (!f.startTime || !f.endTime) return 'Enter start and end time'
-    if (f.endTime <= f.startTime) return 'End time must be after the start time (same day)'
+    if (!out) {
+      if (!f.date) return 'Select the date'
+      if (!f.startTime || !f.endTime) return 'Enter start and end time'
+      if (f.endTime <= f.startTime) return 'End time must be after the start time (same day)'
+    } else if (f.endTime && !f.startTime) return 'Enter a start time, or clear the end time' // Outsource: date and time are optional
+    if (f.date && !editing && f.date < todayStr()) return 'Date cannot be in the past'
     if (out && f.fulfilment === 'delivery' && !f.deliveryAddress.trim()) return 'Enter the delivery address'
     if (clash) return `${hall?.name} is already booked ${fmtTime(clash.startTime)}–${fmtTime(clash.endTime)} for ${clash.customer.name}`
     if (f.hallCharge !== '' && num(f.hallCharge) < 0) return 'Maintenance charge cannot be negative'
@@ -135,7 +138,7 @@ function Form({ nav, editing, hallId, categories, draft }) {
     setBusy(true); setErr('')
     try {
       const { advance, payRef, ...keep } = f
-      await saveDraft({ id: draftId, kind: 'booking', hallId: f.hallId, customerName: f.name, data: { f: { ...keep, advance: '' }, selected: [...selected.values()], sel, endTouched } })
+      await saveDraft({ id: draftId, kind: 'booking', hallId: f.hallId, customerName: f.name, data: { f: { ...keep, advance: '' }, selected: [...selected.values()], sel } })
       toast('Draft saved'); nav.tab('home')
     } catch (x) { setErr(errMsg(x)) } finally { setBusy(false) }
   }
@@ -169,10 +172,10 @@ function Form({ nav, editing, hallId, categories, draft }) {
       <fieldset className="secform__card">
         <legend>3 · Date & time</legend>
         <div className="form">
-          <Field label="Date *"><input type="date" value={f.date} min={editing ? undefined : todayStr()} onChange={set('date')} /></Field>
+          <Field label={out ? 'Date' : 'Date *'} hint={out ? 'Optional' : undefined}><input type="date" value={f.date} min={editing ? undefined : todayStr()} onChange={set('date')} /></Field>
           <div className="form-row">
-            <Field label="Start time *"><input type="time" value={f.startTime} onChange={set('startTime')} /></Field>
-            <Field label="End time *" hint="Standard slot is 3 hours"><input type="time" value={f.endTime} onChange={(e) => { setEndTouched(true); set('endTime')(e) }} /></Field>
+            <Field label={out ? 'Start time' : 'Start time *'}><input type="time" value={f.startTime} onChange={setStart} /></Field>
+            <Field label={out ? 'End time' : 'End time *'} hint={out && f.startTime && f.endTime && f.endTime < f.startTime ? 'Ends the next day' : 'Set automatically to start + 3 hours. You can change it.'}><input type="time" value={f.endTime} onChange={set('endTime')} /></Field>
           </div>
           {f.hallId && f.date && (
             <div className={`avail ${clash ? 'avail--bad' : ''}`} aria-live="polite">
